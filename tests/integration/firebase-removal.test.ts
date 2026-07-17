@@ -46,7 +46,7 @@ function resetDb() {
   systemOffsetMs = 0;
 }
 
-vi.mock("../../serverDb", () => ({
+vi.mock("../../api/serverDb", () => ({
   isSupabaseConfigured: false,
   getSystemOffsetMs: async () => systemOffsetMs,
   setSystemOffsetMs: async (ms: number) => { systemOffsetMs = ms; },
@@ -138,7 +138,7 @@ vi.mock("../../serverDb", () => ({
 }));
 
 // mock serverDb 完成后再动态导入 app
-const appPromise = import("../../api/server").then(m => m.default);
+const appPromise = import("../../api/index").then(m => m.default);
 
 // 测试用账号
 const TEST_EMAIL = "test_user@example.com";

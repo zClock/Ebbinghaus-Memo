@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 dotenv.config({ path: ".env" });
 
-import app from "./api/server";
+import app from "./api/index";
 
 const PORT = 3003;
 
