@@ -13,7 +13,7 @@ dotenv.config({ path: ".env" });
 
 import app from "./api/index";
 
-const PORT = 3003;
+const PORT = parseInt(process.env.PORT || "3003", 10);
 
 async function start() {
   if (process.env.NODE_ENV !== "production") {

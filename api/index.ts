@@ -31,9 +31,12 @@ if (isSupabaseConfigured) {
 }
 
 const isVercelEnv = !!process.env.VERCEL;
+// 支持通过环境变量覆盖本地 db.json 路径（用于 E2E 测试隔离）
 const DB_PATH = isVercelEnv
   ? path.join("/tmp", "db.json")
-  : path.join(process.cwd(), "data", "db.json");
+  : process.env.DB_PATH
+    ? path.resolve(process.env.DB_PATH)
+    : path.join(process.cwd(), "data", "db.json");
 
 interface WordDbSchema {
   words: any[];
