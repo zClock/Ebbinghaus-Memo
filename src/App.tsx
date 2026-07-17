@@ -501,6 +501,7 @@ export default function App() {
                 onResetTime={handleResetTime}
                 onResetDb={handleResetDb}
                 onStartReview={() => setCurrentView("review")}
+                onNavigateWords={() => setCurrentView("words")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
               />
