@@ -14,6 +14,8 @@ async function resetTestDb() {
     users: [],
     sessions: [],
   };
+  // 确保父目录存在（CI runner 上 data/ 可能不存在，因为 db.* 都被 gitignore）
+  fs.mkdirSync(path.dirname(TEST_DB_PATH), { recursive: true });
   fs.writeFileSync(TEST_DB_PATH, JSON.stringify(empty, null, 2), "utf8");
 }
 
