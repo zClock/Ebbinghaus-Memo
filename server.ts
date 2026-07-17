@@ -1016,6 +1016,10 @@ async function start() {
   });
 }
 
-start().catch(err => {
-  console.error("Failed to start server:", err);
-});
+if (!process.env.VERCEL) {
+  start().catch(err => {
+    console.error("Failed to start server:", err);
+  });
+}
+
+export default app;
