@@ -477,63 +477,49 @@ app.post("/api/sync/pull", authMiddleware, async (req: any, res) => {
 
 // 1. Get stats
 app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
-  const vTime = await getVirtualTime();
-  const userId = req.userId;
-  
-  const userWords = await getUserWords(userId);
-  const totalWords = userWords.length;
-  const dueTodayCount = userWords.filter(w => {
-    return new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6;
-  }).length;
-
-  const masteredCount = userWords.filter(w => w.reviewStage >= 5 || w.consecutiveCorrect >= 3).length;
-
-  const stageDistribution = [0, 0, 0, 0, 0, 0, 0];
-  userWords.forEach(w => {
-    if (w.reviewStage >= 0 && w.reviewStage <= 6) {
-      stageDistribution[w.reviewStage]++;
-    }
-  });
-
-  // Calculate Streak metrics from user histories
-  const userHistories = await getUserHistories(userId);
-  let currentStreak = 0;
-  let maxStreak = 0;
-
-  if (userHistories.length > 0) {
-    const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  try {
+    const vTime = await getVirtualTime();
+    const userId = req.userId;
     
-    // Extract unique calendar date strings (YYYY-MM-DD)
-    const dateStrings = Array.from(new Set(
-      userHistories.map(h => {
-        const d = new Date(h.reviewedAt);
-        return formatDate(d);
-      })
-    ));
+    const userWords = await getUserWords(userId);
+    const totalWords = userWords.length;
+    const dueTodayCount = userWords.filter(w => {
+      return new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6;
+    }).length;
 
-    // Sort dates chronologically
-    dateStrings.sort();
+    const masteredCount = userWords.filter(w => w.reviewStage >= 5 || w.consecutiveCorrect >= 3).length;
 
-    const datesSet = new Set(dateStrings);
-    let checkDate = new Date(vTime.getTime());
-    let checkStr = formatDate(checkDate);
-
-    if (datesSet.has(checkStr)) {
-      currentStreak = 1;
-      while (true) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        const prevStr = formatDate(checkDate);
-        if (datesSet.has(prevStr)) {
-          currentStreak++;
-        } else {
-          break;
-        }
+    const stageDistribution = [0, 0, 0, 0, 0, 0, 0];
+    userWords.forEach(w => {
+      if (w.reviewStage >= 0 && w.reviewStage <= 6) {
+        stageDistribution[w.reviewStage]++;
       }
-    } else {
-      // Check yesterday
-      checkDate.setDate(checkDate.getDate() - 1);
-      const yesterdayStr = formatDate(checkDate);
-      if (datesSet.has(yesterdayStr)) {
+    });
+
+    // Calculate Streak metrics from user histories
+    const userHistories = await getUserHistories(userId);
+    let currentStreak = 0;
+    let maxStreak = 0;
+
+    if (userHistories.length > 0) {
+      const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      
+      // Extract unique calendar date strings (YYYY-MM-DD)
+      const dateStrings = Array.from(new Set(
+        userHistories.map(h => {
+          const d = new Date(h.reviewedAt);
+          return formatDate(d);
+        })
+      ));
+
+      // Sort dates chronologically
+      dateStrings.sort();
+
+      const datesSet = new Set(dateStrings);
+      let checkDate = new Date(vTime.getTime());
+      let checkStr = formatDate(checkDate);
+
+      if (datesSet.has(checkStr)) {
         currentStreak = 1;
         while (true) {
           checkDate.setDate(checkDate.getDate() - 1);
@@ -544,68 +530,102 @@ app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
             break;
           }
         }
-      }
-    }
-
-    // Calculate max streak historically
-    let tempStreak = 0;
-    let prevTimeMs: number | null = null;
-
-    for (const dateStr of dateStrings) {
-      const parts = dateStr.split("-").map(Number);
-      const curTimeMs = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
-
-      if (prevTimeMs === null) {
-        tempStreak = 1;
       } else {
-        const diffDays = Math.round((curTimeMs - prevTimeMs) / (24 * 60 * 60 * 1000));
-        if (diffDays === 1) {
-          tempStreak++;
-        } else if (diffDays > 1) {
-          tempStreak = 1;
+        // Check yesterday
+        checkDate.setDate(checkDate.getDate() - 1);
+        const yesterdayStr = formatDate(checkDate);
+        if (datesSet.has(yesterdayStr)) {
+          currentStreak = 1;
+          while (true) {
+            checkDate.setDate(checkDate.getDate() - 1);
+            const prevStr = formatDate(checkDate);
+            if (datesSet.has(prevStr)) {
+              currentStreak++;
+            } else {
+              break;
+            }
+          }
         }
       }
-      if (tempStreak > maxStreak) {
-        maxStreak = tempStreak;
+
+      // Calculate max streak historically
+      let tempStreak = 0;
+      let prevTimeMs: number | null = null;
+
+      for (const dateStr of dateStrings) {
+        const parts = dateStr.split("-").map(Number);
+        const curTimeMs = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+
+        if (prevTimeMs === null) {
+          tempStreak = 1;
+        } else {
+          const diffDays = Math.round((curTimeMs - prevTimeMs) / (24 * 60 * 60 * 1000));
+          if (diffDays === 1) {
+            tempStreak++;
+          } else if (diffDays > 1) {
+            tempStreak = 1;
+          }
+        }
+        if (tempStreak > maxStreak) {
+          maxStreak = tempStreak;
+        }
+        prevTimeMs = curTimeMs;
       }
-      prevTimeMs = curTimeMs;
     }
+
+    const systemOffsetMs = await getSystemOffsetMs();
+
+    res.json({
+      totalWords,
+      dueTodayCount,
+      masteredCount,
+      stageDistribution,
+      systemOffsetDays: Math.round(systemOffsetMs / (24 * 60 * 60 * 1000)),
+      virtualTime: vTime.toISOString(),
+      currentStreak,
+      maxStreak
+    });
+  } catch (err: any) {
+    console.error("Stats API error:", err);
+    res.status(500).json({ error: "获取统计数据失败: " + (err.message || err) });
   }
-
-  const systemOffsetMs = await getSystemOffsetMs();
-
-  res.json({
-    totalWords,
-    dueTodayCount,
-    masteredCount,
-    stageDistribution,
-    systemOffsetDays: Math.round(systemOffsetMs / (24 * 60 * 60 * 1000)),
-    virtualTime: vTime.toISOString(),
-    currentStreak,
-    maxStreak
-  });
 });
 
 // 2. Fetch all words in database
 app.get("/api/words", authMiddleware, async (req: any, res) => {
-  const userId = req.userId;
-  const userWords = await getUserWords(userId);
-  res.json(userWords);
+  try {
+    const userId = req.userId;
+    const userWords = await getUserWords(userId);
+    res.json(userWords);
+  } catch (err: any) {
+    console.error("Words API error:", err);
+    res.status(500).json({ error: "获取单词列表失败: " + (err.message || err) });
+  }
 });
 
 // 3. Fetch all review histories
 app.get("/api/histories", authMiddleware, async (req: any, res) => {
-  const userId = req.userId;
-  const userHistories = await getUserHistories(userId);
-  res.json(userHistories);
+  try {
+    const userId = req.userId;
+    const userHistories = await getUserHistories(userId);
+    res.json(userHistories);
+  } catch (err: any) {
+    console.error("Histories API error:", err);
+    res.status(500).json({ error: "获取复习历史失败: " + (err.message || err) });
+  }
 });
 
 // 4. Fetch today's due words for review
 app.get("/api/words/due", authMiddleware, async (req: any, res) => {
-  const vTime = await getVirtualTime();
-  const userId = req.userId;
-  const due = await getUserDueWords(userId, vTime);
-  res.json(due);
+  try {
+    const vTime = await getVirtualTime();
+    const userId = req.userId;
+    const due = await getUserDueWords(userId, vTime);
+    res.json(due);
+  } catch (err: any) {
+    console.error("Due words API error:", err);
+    res.status(500).json({ error: "获取待复习单词失败: " + (err.message || err) });
+  }
 });
 
 // 5. Create word (auto fetching dictionary / fallback Gemini)

@@ -195,9 +195,9 @@ export default function App() {
           }
         })();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load data:", err);
-      setErrorText("加载词库数据失败，请确认后端服务器正常运行。");
+      setErrorText("加载数据失败: " + (err.message || err));
       setIsLoading(false);
     }
   };
@@ -207,7 +207,10 @@ export default function App() {
     const res = await fetch("/api/system/stats", {
       headers: { "Authorization": `Bearer ${t}` }
     });
-    if (!res.ok) throw new Error("Stats fetch failed");
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || "获取系统统计数据失败");
+    }
     const data = await res.json();
     setStats(data);
   };
@@ -217,7 +220,10 @@ export default function App() {
     const res = await fetch("/api/words", {
       headers: { "Authorization": `Bearer ${t}` }
     });
-    if (!res.ok) throw new Error("Words fetch failed");
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || "获取词库失败");
+    }
     const data = await res.json();
     setWords(data);
   };
@@ -227,7 +233,10 @@ export default function App() {
     const res = await fetch("/api/words/due", {
       headers: { "Authorization": `Bearer ${t}` }
     });
-    if (!res.ok) throw new Error("Due words fetch failed");
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || "获取待复习单词失败");
+    }
     const data = await res.json();
     setDueWords(data);
   };
@@ -237,7 +246,10 @@ export default function App() {
     const res = await fetch("/api/histories", {
       headers: { "Authorization": `Bearer ${t}` }
     });
-    if (!res.ok) throw new Error("Histories fetch failed");
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || "获取复习记录失败");
+    }
     const data = await res.json();
     setHistories(data);
   };
