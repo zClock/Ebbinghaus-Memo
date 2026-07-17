@@ -1563,5 +1563,7 @@ export function getTranslation(language: string, useTargetUi: boolean): Translat
     return translations.Chinese;
   }
   const key = language === "All" ? "English" : language;
-  return translations[key] || translations.English;
+  const target = translations[key] || translations.English;
+  // 部分键在某些目标语言里尚未补齐，用中文兜底，避免界面出现空白文字
+  return { ...translations.Chinese, ...target };
 }
