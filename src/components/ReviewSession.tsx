@@ -514,7 +514,27 @@ export default function ReviewSession({
                             {t.fillBlanks}
                           </span>
                           <p className="text-xs font-serif text-slate-800 leading-relaxed italic">
-                            "{currentWord.example.replace(new RegExp(`\\b${currentWord.spelling}\\b`, "gi"), getMaskedSpelling(currentWord.spelling))}"
+                            "{(() => {
+                              // 用 split/join 替代 \b 正则，支持 Unicode（日语/中文等）
+                              const ex = currentWord.example;
+                              const sp = currentWord.spelling;
+                              const masked = getMaskedSpelling(sp);
+                              // case-insensitive 替换：保留非目标片段的大小写
+                              const lower = ex.toLowerCase();
+                              const target = sp.toLowerCase();
+                              let result = "";
+                              let i = 0;
+                              while (i < ex.length) {
+                                if (lower.substring(i, i + target.length) === target) {
+                                  result += masked;
+                                  i += target.length;
+                                } else {
+                                  result += ex[i];
+                                  i++;
+                                }
+                              }
+                              return result;
+                            })()}"
                           </p>
                           <p className="text-[11px] text-slate-500 font-light pl-2 border-l border-indigo-100">
                             {currentWord.exampleTranslation}

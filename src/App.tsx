@@ -443,7 +443,7 @@ export default function App() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ fullReset: true }),
+        body: JSON.stringify({ fullReset: true, language: selectedLanguage === "All" ? undefined : selectedLanguage }),
       });
       if (res.ok) {
         await Promise.all([
