@@ -26,9 +26,10 @@
 
 ```
 .
-├── server.ts              # Express 后端入口（API 路由 + Vite 中间件）
-├── serverDb.ts            # 数据库适配层（Supabase / 本地 JSON 双实现）
-├── api/index.ts           # Vercel Serverless 入口
+├── server.ts              # 本地开发入口（监听 3003 端口 + Vite 中间件）
+├── api/
+│   ├── index.ts           # Vercel Serverless 单文件入口（全部 Express 业务逻辑内联于此）
+│   └── serverDb.ts        # 数据库适配层（Supabase / 本地 JSON 双实现）—— ⚠️ 已内联进 api/index.ts
 ├── data/db.json           # 本地 JSON 数据库（默认）
 ├── supabase-schema.sql    # Supabase 建表 SQL
 ├── src/
@@ -36,24 +37,32 @@
 │   ├── main.tsx           # React 入口
 │   ├── types.ts           # 前端类型定义（User / Word / Stats）
 │   ├── components/
-│   │   ├── Auth.tsx       # 登录/注册
-│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行）
-│   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入）
-│   │   ├── ReviewSession.tsx  # 复习会话
-│   │   ├── Profile.tsx    # 个人资料 + 勋章墙
+│   │   ├── Auth.tsx       # 登录/注册（level 已移除，dailyGoal 输入修复）
+│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导）
+│   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
+│   │   ├── ReviewSession.tsx  # 复习会话（错词重考 + Unicode-safe 例句挖空）
+│   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       └── translations.ts    # 多语言文案
+│       ├── translations.ts    # 多语言文案（6 种 UI 语言）
+│       └── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
 ├── tests/
 │   ├── unit/                 # 单元测试（纯函数、算法、数据映射）
-│   │   └── srs-algorithm.test.ts
+│   │   ├── srs-algorithm.test.ts
+│   │   └── reviewQueue.test.ts   # 错词重考队列逻辑（11 个用例）
 │   └── integration/          # 集成测试（supertest + vi.mock 内存数据库）
-│       └── firebase-removal.test.ts
+│       └── firebase-removal.test.ts  # ⚠️ 当前 .skip（serverDb 内联后无法 mock，待重写）
 ├── vitest.config.ts       # Vitest 配置
 ├── .env.local             # 本地环境变量（**不提交**，已在 .gitignore）
 ├── .env.example           # 环境变量示例（提交）
 └── package.json
 ```
+
+### ⚠️ Vercel 部署关键约束
+- Vercel `@vercel/node` runtime **只编译显式声明的 function 入口文件**
+- 入口文件 import 的其他 `.ts` 即使在同目录也**不会被编译**
+- 因此 `api/index.ts` 是**单文件 serverless function**，全部业务逻辑（包括数据库适配层）内联其中
+- 修改 `api/` 下的文件时，**不能**拆分成多个 `.ts` 互相 import
 
 ## 4. 常用命令
 
@@ -145,6 +154,12 @@ npm run start
 - **运行**：`npm test`（一次性）/ `npm run test:watch`（监听）
 - **覆盖范围**：业务核心逻辑必须有测试；样式/UI 细节不强制
 - **修改已有功能时**：先看 `tests/` 里有没有相关测试，有则更新，没有则补
+- ⚠️ **集成测试现状**：`firebase-removal.test.ts` 因 serverDb 内联到 `api/index.ts` 后无法 vi.mock，当前 `.skip`。新集成测试应改用基于真实本地 JSON 的端到端方式
+
+### 纯函数优先原则
+- **业务核心逻辑应抽成纯函数**，放在 `src/lib/` 下，配单元测试
+- 示例：`src/lib/reviewQueue.ts`（复习队列管理）抽离后，让 React 组件复用且可测试
+- React 组件只负责 UI 和状态管理，复杂算法调用纯函数
 
 ## 8. 当前已知问题
 
