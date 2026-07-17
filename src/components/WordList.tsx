@@ -149,12 +149,12 @@ export default function WordList({
       const success = await onAddWord(newSpelling);
       if (success) {
         setSuccessMsg(
-          t.addSuccessMsg.replace("{word}", newSpelling.trim().toLowerCase())
+          t.addedSuccess.replace("{spelling}", newSpelling.trim().toLowerCase())
         );
         setNewSpelling("");
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
-        setErrorMsg(t.addFailMsg);
+        setErrorMsg(t.addedFail);
       }
     } catch (err: any) {
       // 显示后端返回的具体错误（如"单词已存在"），fallback 到通用错误
@@ -277,7 +277,7 @@ export default function WordList({
       setEditExampleTrans(updatedWord.exampleTranslation || "");
       setEditMnemonic(updatedWord.mnemonic || "");
       
-      setRegenSuccess(t.regenSuccessMsg);
+      setRegenSuccess(t.aiPolishSuccess);
       setTimeout(() => setRegenSuccess(""), 5000);
     } catch (err: any) {
       console.error(err);
@@ -480,10 +480,10 @@ export default function WordList({
             </div>
             <div>
               <h3 className="font-display font-bold text-slate-900 text-lg">
-                {t.wordListChartTitle}
+                {t.ebbinghausVocabularyTitle}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                {t.wordListChartDesc}
+                {t.ebbinghausLibraryTitle}
               </p>
             </div>
           </div>
@@ -556,7 +556,7 @@ export default function WordList({
                   {t.noWordData}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1 max-w-xs leading-relaxed">
-                  {t.noWordDataDesc}
+                  {t.ebbinghausLibraryTitle}
                 </p>
               </div>
             ) : (
@@ -589,7 +589,7 @@ export default function WordList({
                         cursor={{ fill: "#f8fafc", radius: 8 }}
                         formatter={(value: any) => [
                           `${value} ${t.wordsCount}`, 
-                          t.stageCountLabel
+                          t.dueReady
                         ]}
                       />
                       <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={32}>
@@ -663,12 +663,12 @@ export default function WordList({
               <div className="flex items-center gap-2 mb-1">
                 <Plus className="w-5 h-5 text-indigo-600" />
                 <h3 className="font-display font-bold text-slate-900 text-lg">
-                  {t.addSingleTitle}
+                  {t.inputWordLabel}
                 </h3>
               </div>
               
               <p className="text-xs text-slate-400 font-light leading-relaxed mb-2">
-                {t.addSingleDesc}
+                {t.spellingAddPlaceholder}
               </p>
 
               <form onSubmit={handleAddSubmit} className="space-y-4">
