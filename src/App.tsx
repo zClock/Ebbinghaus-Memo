@@ -304,32 +304,51 @@ export default function App() {
     return updatedWord;
   };
 
-  // 3.8 Batch Import Words
-  const handleImportWords = async (spellings: string[]): Promise<{
+  // 3.8 Batch Import Words（逐个调用 /api/words/create，支持进度回调）
+  const handleImportWords = async (
+    spellings: string[],
+    onProgress?: (done: number, total: number, current: string) => void
+  ): Promise<{
     successCount: number;
     addedWords: string[];
     errors: { spelling: string; error: string }[];
   }> => {
     const wordLang = selectedLanguage === "All" ? "English" : selectedLanguage;
-    const res = await fetch("/api/words/import-batch", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ spellings, language: wordLang }),
-    });
-    if (!res.ok) {
-      const errData = await res.json();
-      throw new Error(errData.error || "批量导入失败");
+    const addedWords: string[] = [];
+    const errors: { spelling: string; error: string }[] = [];
+    const total = spellings.length;
+
+    for (let i = 0; i < spellings.length; i++) {
+      const spelling = spellings[i];
+      onProgress?.(i, total, spelling);
+      try {
+        const res = await fetch("/api/words/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ spelling, language: wordLang }),
+        });
+        if (res.status === 201) {
+          addedWords.push(spelling);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          errors.push({ spelling, error: errData.error || `HTTP ${res.status}` });
+        }
+      } catch (err: any) {
+        errors.push({ spelling, error: err.message || "网络错误" });
+      }
     }
-    const data = await res.json();
+
+    onProgress?.(total, total, "");
+    // 全部完成后统一刷新
     await Promise.all([
       fetchStats(token, selectedLanguage),
       fetchWords(token, selectedLanguage),
       fetchDueWords(token, selectedLanguage)
     ]);
-    return data;
+    return { successCount: addedWords.length, addedWords, errors };
   };
 
   // 4. Submit review session results

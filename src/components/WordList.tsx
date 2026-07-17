@@ -44,7 +44,10 @@ interface WordListProps {
   onDeleteWord: (id: string) => void;
   onUpdateWord: (id: string, updatedFields: Partial<Word>) => void;
   onRegenerateWord: (id: string) => Promise<Word>;
-  onImportWords?: (spellings: string[]) => Promise<{
+  onImportWords?: (
+    spellings: string[],
+    onProgress?: (done: number, total: number, current: string) => void
+  ) => Promise<{
     successCount: number;
     addedWords: string[];
     errors: { spelling: string; error: string }[];
@@ -74,6 +77,7 @@ export default function WordList({
   const [addMode, setAddMode] = useState<"single" | "batch">("single");
   const [batchText, setBatchText] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importResult, setImportResult] = useState<{
     successCount: number;
@@ -222,10 +226,13 @@ export default function WordList({
     setIsImporting(true);
     setImportError("");
     setImportResult(null);
+    setImportProgress({ done: 0, total: parsed.length, current: "" });
 
     try {
       if (onImportWords) {
-        const result = await onImportWords(parsed);
+        const result = await onImportWords(parsed, (done, total, current) => {
+          setImportProgress({ done, total, current });
+        });
         setImportResult(result);
         if (result.successCount > 0) {
           setBatchText(""); // Clear on success
@@ -237,6 +244,7 @@ export default function WordList({
       setImportError(err.message || (useTargetUi ? "An error occurred during import." : "导入过程中发生错误。"));
     } finally {
       setIsImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -780,7 +788,11 @@ export default function WordList({
                   {isImporting ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      <span>{t.parsingLabel}</span>
+                      <span>
+                        {importProgress && importProgress.total > 0
+                          ? `${t.parsingLabel} ${importProgress.done} / ${importProgress.total}${importProgress.current ? ` (${importProgress.current})` : ""}`
+                          : t.parsingLabel}
+                      </span>
                     </>
                   ) : (
                     <>
@@ -788,6 +800,22 @@ export default function WordList({
                     </>
                   )}
                 </button>
+
+                {/* 进度条 */}
+                {isImporting && importProgress && importProgress.total > 0 && (
+                  <div className="w-full mt-3">
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 text-center font-mono">
+                      {Math.round((importProgress.done / importProgress.total) * 100)}%
+                      {importProgress.current ? ` · ${importProgress.current}` : ""}
+                    </p>
+                  </div>
+                )}
               </form>
 
               {importError && (
@@ -1067,9 +1095,11 @@ export default function WordList({
             <div className="flex flex-col sm:flex-row items-center justify-between pt-4 mt-4 border-t border-slate-100 gap-3">
               <span className="text-xs text-slate-400 font-medium">
                 {t.paginationInfo
+                  .replace("{current}", String(activePage))
+                  .replace("{total}", String(totalPages))
+                  .replace("{count}", String(totalItems))
                   .replace("{start}", String((activePage - 1) * pageSize + 1))
                   .replace("{end}", String(Math.min(activePage * pageSize, totalItems)))
-                  .replace("{total}", String(totalItems))
                 }
               </span>
 

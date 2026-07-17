@@ -11,7 +11,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [dailyGoal, setDailyGoal] = useState(15);
+  const [dailyGoal, setDailyGoal] = useState("15");
   
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -26,7 +26,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     const url = isLogin ? "/api/auth/login" : "/api/auth/register";
     const body = isLogin 
       ? { email, password } 
-      : { email, password, name, dailyGoal: Number(dailyGoal) };
+      : { email, password, name, dailyGoal: Number(dailyGoal) || 15 };
 
     try {
       const res = await fetch(url, {
@@ -204,7 +204,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                       max={200}
                       required={!isLogin}
                       value={dailyGoal}
-                      onChange={(e) => setDailyGoal(Number(e.target.value))}
+                      onChange={(e) => setDailyGoal(e.target.value)}
                       className="block w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium"
                     />
                   </div>

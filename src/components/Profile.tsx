@@ -989,7 +989,7 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
 
   // Profile modification states
   const [name, setName] = useState(user.name);
-  const [dailyGoal, setDailyGoal] = useState(user.dailyGoal);
+  const [dailyGoal, setDailyGoal] = useState(String(user.dailyGoal ?? 15));
   const [isUpdating, setIsUpdating] = useState(false);
   const [profileMsg, setProfileMsg] = useState({ type: "", text: "" });
 
@@ -1047,7 +1047,7 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
 
   useEffect(() => {
     setName(user.name);
-    setDailyGoal(user.dailyGoal);
+    setDailyGoal(String(user.dailyGoal ?? 15));
   }, [user]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -1062,7 +1062,7 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ name, dailyGoal: Number(dailyGoal), language: langKey })
+        body: JSON.stringify({ name, dailyGoal: Number(dailyGoal) || 15, language: langKey })
       });
 
       const data = await res.json();
@@ -1216,7 +1216,7 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
                 max={200}
                 required
                 value={dailyGoal}
-                onChange={(e) => setDailyGoal(Number(e.target.value))}
+                onChange={(e) => setDailyGoal(e.target.value)}
                 className="block w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium"
               />
             </div>
