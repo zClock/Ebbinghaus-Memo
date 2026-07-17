@@ -41,11 +41,9 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       }
 
       setSuccessMsg(isLogin ? "登录成功！" : "注册成功！欢迎使用艾宾浩斯智能记忆引擎。");
-      
-      // Delay success redirect slightly to let users see the state transition
-      setTimeout(() => {
-        onAuthSuccess(data.token, data.user);
-      }, 1000);
+
+      // 立即触发跳转，避免 setTimeout 在 HMR/重渲染时丢失闭包引用
+      onAuthSuccess(data.token, data.user);
 
     } catch (err: any) {
       setErrorMsg(err.message || "连接服务器失败。");
