@@ -1,12 +1,6 @@
 import React, { useState } from "react";
 import { Mail, Lock, User, Target, GraduationCap, ArrowRight, BookOpen, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { 
-  auth, 
-  googleProvider, 
-  isFirebaseConfigured, 
-  signInWithPopup 
-} from "../lib/firebase";
 
 interface AuthProps {
   onAuthSuccess: (token: string, user: any) => void;
@@ -23,61 +17,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-
-  const handleGoogleSignIn = async () => {
-    setErrorMsg("");
-    setSuccessMsg("");
-    setIsLoading(true);
-
-    try {
-      let uid = "";
-      let emailAddress = "";
-      let displayName = "";
-
-      if (isFirebaseConfigured && auth && googleProvider) {
-        const result = await signInWithPopup(auth, googleProvider);
-        const fbUser = result.user;
-        uid = fbUser.uid;
-        emailAddress = fbUser.email || "";
-        displayName = fbUser.displayName || "";
-      } else {
-        // Simulated Google Sign-In for preview environment testing
-        console.log("Simulating Google Sign-In as Firebase is not configured");
-        uid = "google_usr_sim_" + Math.random().toString(36).substring(2, 11);
-        emailAddress = "google_tester@example.com";
-        displayName = "Google 体验官";
-        
-        setSuccessMsg("演示模式：成功模拟 Google 账号快捷登录！");
-      }
-
-      if (!emailAddress) {
-        throw new Error("未能从 Google 账户获取邮箱地址。");
-      }
-
-      const res = await fetch("/api/auth/firebase-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid, email: emailAddress, name: displayName }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "交换会话凭证失败，请稍后重试。");
-      }
-
-      setSuccessMsg(`欢迎回来，${data.user.name}！已为您点亮记忆空间。`);
-      
-      setTimeout(() => {
-        onAuthSuccess(data.token, data.user);
-      }, 1200);
-
-    } catch (err: any) {
-      console.error("Google Sign-In Error:", err);
-      setErrorMsg(err.message || "使用 Google 登录失败，请确认网络或配置。");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,24 +251,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
-            </button>
-
-            {/* Divider */}
-            <div className="relative my-4 flex py-1.5 items-center">
-              <div className="flex-grow border-t border-slate-100"></div>
-              <span className="flex-shrink mx-4 text-xs font-mono text-slate-400">OR</span>
-              <div className="flex-grow border-t border-slate-100"></div>
-            </div>
-
-            {/* Google Sign-in Button */}
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              className="w-full py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
-            >
-              <span className="flex items-center justify-center w-5 h-5 bg-rose-50 text-rose-500 rounded-full font-bold text-xs">G</span>
-              <span>{isFirebaseConfigured ? "使用 Google 账号快捷登录" : "使用 Google 账号快捷登录 (演示)"}</span>
             </button>
           </form>
 

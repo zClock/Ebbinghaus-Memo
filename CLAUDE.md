@@ -10,7 +10,7 @@
 - 采用 6 阶段 SRS（间隔重复）算法：`[1, 2, 4, 7, 15, 30]` 天
 - 支持多语言词库（English / Japanese / Spanish / French / Portuguese）
 - 支持时间旅行（虚拟时间快进），用于触发复习演示
-- 支持云端 Firestore 备份与 Supabase 持久化
+- 数据持久化到 Supabase Postgres（生产）或本地 JSON 文件（开发默认）
 
 ## 2. 技术栈
 
@@ -20,7 +20,6 @@
 | 后端 | Express 4 + tsx（直接运行 TypeScript）|
 | 数据库 | 本地 `data/db.json`（默认）/ Supabase Postgres（生产）|
 | AI | Google Gemini（主）+ GLM Anthropic 兼容端点（兜底）|
-| 云同步（可选）| Firebase Firestore + Google Sign-In |
 | 部署 | Vercel（`vercel.json` 已配置）|
 
 ## 3. 项目结构
@@ -44,8 +43,6 @@
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       ├── firebase.ts        # Firebase 客户端
-│       ├── firestoreSync.ts   # Firestore 云同步
 │       └── translations.ts    # 多语言文案
 ├── .env.local             # 本地环境变量（**不提交**，已在 .gitignore）
 ├── .env.example           # 环境变量示例（提交）
@@ -84,7 +81,6 @@ npm run start
 - `GEMINI_API_KEY` — Gemini AI（必填，影响新词释义质量）
 - `GLM_API_KEY` / `GLM_BASE_URL` / `GLM_MODEL` — GLM 兜底（可选）
 - `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — 切换到云端数据库
-- `VITE_FIREBASE_*` — 前端 Firebase 配置（可选，启用 Google 登录与 Firestore 同步）
 
 ## 6. Git 协作规范
 

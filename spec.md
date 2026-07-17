@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.0（基线，2026-07-17）
+- **当前版本**：v1.1（2026-07-17，移除 Firebase）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -12,7 +12,6 @@
 ### 1.1 账号体系
 - 作为学习者，我可以用邮箱+密码**注册**账号
 - 作为学习者，我可以用邮箱+密码**登录**
-- 作为学习者，我可以用 Google 账号**联合登录**（依赖 Firebase）
 - 我可以**退出登录**（同时让服务端 session 失效）
 - 我可以**修改昵称 / 备考水平 / 每日目标**
 - 我可以**修改密码**（需校验旧密码）
@@ -42,7 +41,6 @@
 - 我可以**时间旅行**（虚拟时间快进 N 天），用于演示/调试
 - 我可以**重置时间**到真实时间
 - 我可以**整体重置词库**到种子状态（仅当前用户）
-- 当配置了 Firebase 时，登录后会**后台同步** Firestore 云端备份到本地，或把本地数据**快照上传**到 Firestore
 
 ### 1.6 勋章系统
 - 连续复习勋章：1 / 3 / 7 / 15 / 30 天（基于历史最高连续天数 `maxStreak`）
@@ -58,14 +56,13 @@
 
 ## 2. API 规格
 
-所有 API 前缀 `/api`。除注册/登录/firebase-login 外，均需 `Authorization: Bearer <token>`。
+所有 API 前缀 `/api`。除注册/登录外，均需 `Authorization: Bearer <token>`。
 
 ### 2.1 认证（无需 token）
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/auth/register` | 邮箱注册，自动塞 4 个种子词 |
 | POST | `/api/auth/login` | 邮箱密码登录 |
-| POST | `/api/auth/firebase-login` | Firebase 联合登录 |
 | POST | `/api/auth/logout` | 注销 session |
 
 ### 2.2 用户与资料
@@ -94,7 +91,6 @@
 | POST | `/api/review/submit` | 提交复习结果批量更新 |
 | POST | `/api/system/time-travel` | 时间快进 N 天 |
 | POST | `/api/system/reset` | `fullReset:true` 重置词库 / `fullReset:false` 重置时间 |
-| POST | `/api/sync/pull` | 从 Firestore 拉取数据覆盖本地 |
 
 ---
 
@@ -189,4 +185,5 @@
 
 ## 7. 版本历史
 
+- **v1.1（2026-07-17）**：移除 Firebase 相关功能（决策不再使用）。删除 `src/lib/firebase.ts`、`src/lib/firestoreSync.ts`；移除 `/api/auth/firebase-login`、`/api/sync/pull` 两个后端路由；清理 App.tsx 中的 Firestore 后台同步逻辑；清理 Auth.tsx 中的 Google 登录入口与按钮；从 package.json 删除 `firebase` 依赖；从 .env.example 删除 `VITE_FIREBASE_*`。
 - **v1.0（2026-07-17）**：基线版本。完成上述全部"已实现"功能，外加本地化配置（端口 3003、.env.local 加载、Gemini+GLM 双 provider 兜底）。

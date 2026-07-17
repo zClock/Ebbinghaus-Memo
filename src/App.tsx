@@ -7,14 +7,6 @@ import Auth from "./components/Auth";
 import Profile from "./components/Profile";
 import { BookOpen, GraduationCap, RefreshCw, AlertCircle } from "lucide-react";
 import { getTranslation } from "./lib/translations";
-import { 
-  loadUserDataFromFirestore, 
-  saveWordToFirestore, 
-  deleteWordFromFirestore, 
-  saveHistoryToFirestore, 
-  uploadFullDataToFirestore 
-} from "./lib/firestoreSync";
-import { isFirebaseConfigured } from "./lib/firebase";
 
 interface Word {
   id: string;
@@ -159,64 +151,6 @@ export default function App() {
 
       // Unlock UI immediately as local-server data loaded successfully
       setIsLoading(false);
-
-      const currentUser = loadedUser || user;
-      
-      // 2. Perform Firestore background sync if configured
-      if (isFirebaseConfigured && currentUser) {
-        (async () => {
-          try {
-            console.log(`[Sync] Performing background Firestore sync check for user: ${currentUser.id}`);
-            
-            // Helper to wrap a promise with a timeout
-            async function withTimeout<T>(promise: Promise<T>, ms: number, errMsg: string): Promise<T> {
-              return Promise.race([
-                promise,
-                new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errMsg)), ms))
-              ]);
-            }
-
-            const cloudData = await withTimeout(
-              loadUserDataFromFirestore(currentUser.id),
-              5000,
-              "Firestore sync load timed out"
-            );
-            
-            if (cloudData && (cloudData.words.length > 0 || cloudData.histories.length > 0)) {
-              console.log(`[Sync] Found ${cloudData.words.length} words in Firestore. Overwriting local storage...`);
-              const pullRes = await fetch("/api/sync/pull", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${t}`
-                },
-                body: JSON.stringify({ words: cloudData.words, histories: cloudData.histories })
-              });
-              
-              if (pullRes.ok) {
-                console.log("[Sync] Local database updated with Firestore cloud backup. Refreshing cache.");
-                await Promise.all([fetchStats(t, lang), fetchWords(t, lang), fetchDueWords(t, lang), fetchHistories(t, lang)]);
-              }
-            } else {
-              // If Firestore contains nothing, seed it with the current server words
-              console.log("[Sync] Firestore is empty. Seeding Firestore with local server defaults...");
-              const currentWordsRes = await fetch("/api/words", {
-                headers: { "Authorization": `Bearer ${t}` }
-              });
-              if (currentWordsRes.ok) {
-                const currentWords = await currentWordsRes.json();
-                await withTimeout(
-                  uploadFullDataToFirestore(currentUser.id, currentWords, []),
-                  5000,
-                  "Firestore sync upload timed out"
-                );
-              }
-            }
-          } catch (syncErr) {
-            console.warn("[Sync] Background Firestore sync failed or timed out:", syncErr);
-          }
-        })();
-      }
     } catch (err: any) {
       console.error("Failed to load data:", err);
       setErrorText("加载数据失败: " + (err.message || err));
@@ -280,27 +214,6 @@ export default function App() {
     setHistories(data);
   };
 
-  // Helper to sync latest data snapshot to Firestore cloud
-  const syncChangesToCloud = async () => {
-    if (!isFirebaseConfigured || !user) return;
-    try {
-      console.log("[Sync] Snapshotting latest words and histories to Firestore...");
-      const [wordsRes, historiesRes] = await Promise.all([
-        fetch("/api/words", { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch("/api/histories", { headers: { "Authorization": `Bearer ${token}` } })
-      ]);
-      if (wordsRes.ok && historiesRes.ok) {
-        const [latestWords, latestHistories] = await Promise.all([
-          wordsRes.json(),
-          historiesRes.json()
-        ]);
-        await uploadFullDataToFirestore(user.id, latestWords, latestHistories);
-      }
-    } catch (err) {
-      console.error("[Sync] Firestore snapshot failed:", err);
-    }
-  };
-
   // 1. Add word
   const handleAddWord = async (spelling: string): Promise<boolean> => {
     try {
@@ -320,7 +233,6 @@ export default function App() {
         fetchWords(token, selectedLanguage),
         fetchDueWords(token, selectedLanguage)
       ]);
-      syncChangesToCloud(); // Push snapshot to cloud
       return true;
     } catch (err) {
       console.error("Failed to create word:", err);
@@ -342,7 +254,6 @@ export default function App() {
           fetchWords(token, selectedLanguage),
           fetchDueWords(token, selectedLanguage)
         ]);
-        syncChangesToCloud(); // Push snapshot to cloud
       }
     } catch (err) {
       console.error("Failed to delete word:", err);
@@ -368,7 +279,6 @@ export default function App() {
           fetchWords(token, selectedLanguage),
           fetchDueWords(token, selectedLanguage)
         ]);
-        syncChangesToCloud(); // Push snapshot to cloud
       }
     } catch (err) {
       console.error("Failed to update word:", err);
@@ -391,7 +301,6 @@ export default function App() {
       fetchWords(token, selectedLanguage),
       fetchDueWords(token, selectedLanguage)
     ]);
-    syncChangesToCloud(); // Push snapshot to cloud
     return updatedWord;
   };
 
@@ -420,7 +329,6 @@ export default function App() {
       fetchWords(token, selectedLanguage),
       fetchDueWords(token, selectedLanguage)
     ]);
-    syncChangesToCloud(); // Push snapshot to cloud
     return data;
   };
 
@@ -443,7 +351,6 @@ export default function App() {
           fetchDueWords(token, selectedLanguage)
         ]);
         setCurrentView("dashboard");
-        syncChangesToCloud(); // Push snapshot to cloud
       }
     } catch (err) {
       console.error("Failed to submit review:", err);
@@ -523,7 +430,6 @@ export default function App() {
           fetchDueWords(token, selectedLanguage)
         ]);
         setCurrentView("dashboard");
-        syncChangesToCloud(); // Push snapshot to cloud
       }
     } catch (err) {
       console.error("Failed to reset database:", err);
