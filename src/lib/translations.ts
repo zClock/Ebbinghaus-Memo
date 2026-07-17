@@ -35,6 +35,7 @@ export interface TranslationSet {
   uiLangOptionZh: string;
   uiLangOptionTarget: string;
   noWordsDue: string;
+  emptyLibraryCta: string;
   perfectReview: string;
   addFirstWord: string;
   reGenerateAi: string;
@@ -304,6 +305,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "中文界面",
     uiLangOptionTarget: "目标语言界面",
     noWordsDue: "今天没有需要复习的单词！太棒了！",
+    emptyLibraryCta: "去添加我的第一个单词",
     perfectReview: "太棒了！完美完成本轮复习！",
     addFirstWord: "还没有单词？点击上方“添加单词”开始学习吧！",
     reGenerateAi: "AI 重新生成",
@@ -568,6 +570,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "Chinese UI",
     uiLangOptionTarget: "English UI",
     noWordsDue: "No words due for review today! Excellent job!",
+    emptyLibraryCta: "Add my first word",
     perfectReview: "Outstanding! You've perfectly completed this review session!",
     addFirstWord: "No words yet? Click 'Add Word' above to start learning!",
     reGenerateAi: "AI Regenerate",
@@ -833,6 +836,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "中国語 UI",
     uiLangOptionTarget: "日本語 UI",
     noWordsDue: "今日復習する単語はありません！素晴らしい！",
+    emptyLibraryCta: "最初の単語を追加する",
     perfectReview: "素晴らしい！今回の復習を完璧に完了しました！",
     addFirstWord: "まだ単語がありません。上の「単語を追加」をクリックして始めましょう！",
     reGenerateAi: "AI再生成",
@@ -1098,6 +1102,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "UI en Chino",
     uiLangOptionTarget: "UI en Español",
     noWordsDue: "¡No hay palabras pendientes para hoy! ¡Buen trabajo!",
+    emptyLibraryCta: "Añadir mi primera palabra",
     perfectReview: "¡Excelente! ¡Has completado perfectamente esta sesión!",
     addFirstWord: "¿Aún sin palabras? ¡Haz clic en 'Añadir palabra' para comenzar!",
     reGenerateAi: "Regenerar con IA",
@@ -1363,6 +1368,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "UI en Chinois",
     uiLangOptionTarget: "UI en Français",
     noWordsDue: "Aucun mot à réviser aujourd'hui ! Excellent travail !",
+    emptyLibraryCta: "Ajouter mon premier mot",
     perfectReview: "Exceptionnel ! Vous avez parfaitement terminé cette session !",
     addFirstWord: "Pas encore de mots ? Cliquez sur 'Ajouter un mot' pour commencer !",
     reGenerateAi: "Régénérer par IA",
@@ -1628,6 +1634,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionZh: "UI em Chinês",
     uiLangOptionTarget: "UI em Português",
     noWordsDue: "Não há palavras para revisar hoje! Excelente trabalho!",
+    emptyLibraryCta: "Adicionar minha primeira palavra",
     perfectReview: "Excelente! Você concluiu esta sessão perfeitamente!",
     addFirstWord: "Ainda não tem palavras? Clique em 'Adicionar palavra' para começar!",
     reGenerateAi: "Regenerar por IA",
