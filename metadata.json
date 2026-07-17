@@ -1,0 +1,6 @@
+{
+  "name": "Ebbinghaus Memo",
+  "description": "基于艾宾浩斯遗忘曲线的智能单词记忆与复习应用，支持拼写与闪卡测试，结合AI词典辅助学习。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
