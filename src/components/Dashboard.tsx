@@ -40,6 +40,7 @@ interface DashboardProps {
   onResetTime: () => void;
   onResetDb: () => void;
   onStartReview: () => void;
+  onNavigateWords?: () => void;
   selectedLanguage: string;
   useTargetUi: boolean;
 }
@@ -184,6 +185,14 @@ export default function Dashboard({
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-900 hover:bg-slate-100 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
               >
                 {t.startTodayReview} ({stats.dueTodayCount})
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : stats.totalWords === 0 ? (
+              <button
+                onClick={() => onNavigateWords && onNavigateWords()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-900 hover:bg-slate-100 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                <span>{t.emptyLibraryCta || "去添加我的第一个单词"}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (

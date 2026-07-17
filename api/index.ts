@@ -1181,16 +1181,7 @@ app.post("/api/auth/register", async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    const userDefaultWords = defaultWords.map(w => ({
-      ...w,
-      id: "word_" + Math.random().toString(36).substring(2, 11),
-      userId: newUser.id,
-      createdAt: new Date().toISOString(),
-      lastResetAt: new Date().toISOString(),
-      nextReviewAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    }));
-
-    await createUser(newUser, userDefaultWords);
+    await createUser(newUser, []);  // 新用户不再自动塞入种子词，等用户自行添加
 
     const token = crypto.randomBytes(32).toString("hex");
     const session: Session = {

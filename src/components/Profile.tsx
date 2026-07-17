@@ -989,7 +989,6 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
 
   // Profile modification states
   const [name, setName] = useState(user.name);
-  const [level, setLevel] = useState(user.level);
   const [dailyGoal, setDailyGoal] = useState(user.dailyGoal);
   const [isUpdating, setIsUpdating] = useState(false);
   const [profileMsg, setProfileMsg] = useState({ type: "", text: "" });
@@ -1048,7 +1047,6 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
 
   useEffect(() => {
     setName(user.name);
-    setLevel(user.level);
     setDailyGoal(user.dailyGoal);
   }, [user]);
 
@@ -1064,7 +1062,7 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ name, level, dailyGoal: Number(dailyGoal), language: langKey })
+        body: JSON.stringify({ name, dailyGoal: Number(dailyGoal), language: langKey })
       });
 
       const data = await res.json();
@@ -1114,17 +1112,6 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
       setPasswordMsg({ type: "error", text: err.message || p.pwdFail });
     } finally {
       setIsChangingPwd(false);
-    }
-  };
-
-  const getLevelLabel = (lvl: string) => {
-    switch (lvl) {
-      case "CET4": return p.levelCET4;
-      case "CET6": return p.levelCET6;
-      case "IELTS": return p.levelIELTS;
-      case "TOEFL": return p.levelTOEFL;
-      case "GRE": return p.levelGRE;
-      default: return p.levelCUSTOM;
     }
   };
 
@@ -1215,25 +1202,6 @@ export default function Profile({ user, token, stats, onProfileUpdate, onLogout,
                 onChange={(e) => setName(e.target.value)}
                 className="block w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium"
               />
-            </div>
-
-            {/* Level Selector */}
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">
-                {p.levelSelectorLabel}
-              </label>
-              <select
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
-                className="block w-full px-3 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium cursor-pointer"
-              >
-                <option value="CET4">{p.levelCET4}</option>
-                <option value="CET6">{p.levelCET6}</option>
-                <option value="IELTS">{p.levelIELTS}</option>
-                <option value="TOEFL">{p.levelTOEFL}</option>
-                <option value="GRE">{p.levelGRE}</option>
-                <option value="CUSTOM">{p.levelCUSTOM}</option>
-              </select>
             </div>
 
             {/* Daily Goal */}

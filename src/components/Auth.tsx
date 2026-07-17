@@ -11,7 +11,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [level, setLevel] = useState("CET4");
   const [dailyGoal, setDailyGoal] = useState(15);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +26,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     const url = isLogin ? "/api/auth/login" : "/api/auth/register";
     const body = isLogin 
       ? { email, password } 
-      : { email, password, name, level, dailyGoal: Number(dailyGoal) };
+      : { email, password, name, dailyGoal: Number(dailyGoal) };
 
     try {
       const res = await fetch(url, {
@@ -41,7 +40,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         throw new Error(data.error || "请求失败，请稍后重试。");
       }
 
-      setSuccessMsg(isLogin ? "登录成功！" : "注册成功！已为您生成专属艾宾初始词库。");
+      setSuccessMsg(isLogin ? "登录成功！" : "注册成功！欢迎使用艾宾浩斯智能记忆引擎。");
       
       // Delay success redirect slightly to let users see the state transition
       setTimeout(() => {
@@ -190,48 +189,24 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                   </div>
                 </div>
 
-                {/* Level selection & Daily goal row */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Vocabulary level */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      词汇水平 / 备考
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={level}
-                        onChange={(e) => setLevel(e.target.value)}
-                        className="block w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium cursor-pointer"
-                      >
-                        <option value="CET4">英语四级 (CET4)</option>
-                        <option value="CET6">英语六级 (CET6)</option>
-                        <option value="IELTS">雅思 (IELTS)</option>
-                        <option value="TOEFL">托福 (TOEFL)</option>
-                        <option value="GRE">词汇巅峰 (GRE)</option>
-                        <option value="CUSTOM">自学拓展 (CUSTOM)</option>
-                      </select>
+                {/* Daily study goal */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    每日复习目标 (词)
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Target className="h-4 w-4" />
                     </div>
-                  </div>
-
-                  {/* Daily study goal */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      每日复习目标 (词)
-                    </label>
-                    <div className="relative rounded-xl shadow-sm">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Target className="h-4 w-4" />
-                      </div>
-                      <input
-                        type="number"
-                        min={5}
-                        max={200}
-                        required={!isLogin}
-                        value={dailyGoal}
-                        onChange={(e) => setDailyGoal(Number(e.target.value))}
-                        className="block w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium"
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      min={5}
+                      max={200}
+                      required={!isLogin}
+                      value={dailyGoal}
+                      onChange={(e) => setDailyGoal(Number(e.target.value))}
+                      className="block w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 font-medium"
+                    />
                   </div>
                 </div>
               </motion.div>
