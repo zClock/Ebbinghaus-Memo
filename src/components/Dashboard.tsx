@@ -95,6 +95,7 @@ export default function Dashboard({
   onResetTime,
   onResetDb,
   onStartReview,
+  onNavigateWords,
   selectedLanguage,
   useTargetUi,
   user,
