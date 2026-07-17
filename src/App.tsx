@@ -526,6 +526,7 @@ export default function App() {
                 onNavigateWords={() => setCurrentView("words")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
+                user={user}
               />
             )}
 

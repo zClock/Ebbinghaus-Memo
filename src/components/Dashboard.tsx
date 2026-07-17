@@ -43,6 +43,7 @@ interface DashboardProps {
   onNavigateWords?: () => void;
   selectedLanguage: string;
   useTargetUi: boolean;
+  user?: { email: string } | null;
 }
 
 // Custom Tooltip component for Recharts
@@ -96,10 +97,15 @@ export default function Dashboard({
   onStartReview,
   selectedLanguage,
   useTargetUi,
+  user,
 }: DashboardProps) {
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const t = getTranslation(selectedLanguage, useTargetUi);
+
+  // 时光机 / 系统数据库重置 仅对特定管理员邮箱开放，
+  // 其他用户隐藏这两个功能，避免误操作带来数据风险
+  const isPrivileged = user?.email === "wujizong@gmail.com";
 
   const stageLabels = useTargetUi ? (
     selectedLanguage === "Japanese" ? [
@@ -475,9 +481,9 @@ export default function Dashboard({
 
       {/* Grid: Bar Chart & Time Machine */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
+
         {/* Left Column: Stage Distribution Chart (Custom Visual Component) */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm lg:col-span-7">
+        <div className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm ${isPrivileged ? "lg:col-span-7" : "lg:col-span-12"}`}>
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-display font-bold text-slate-900 text-lg">
@@ -542,7 +548,9 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Right Column: Time Machine & System Operations */}
+        {/* Right Column: Time Machine & System Operations
+            仅管理员邮箱可见 —— 普通用户隐藏时光机和重置数据库功能 */}
+        {isPrivileged && (
         <div className="space-y-6 lg:col-span-5">
           
           {/* Time Machine Card */}
@@ -651,6 +659,7 @@ export default function Dashboard({
           </div>
 
         </div>
+        )}
       </div>
     </div>
   );
