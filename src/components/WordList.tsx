@@ -156,8 +156,9 @@ export default function WordList({
       } else {
         setErrorMsg(t.addFailMsg);
       }
-    } catch (err) {
-      setErrorMsg(useTargetUi ? "An unexpected error occurred." : "发生意外错误。");
+    } catch (err: any) {
+      // 显示后端返回的具体错误（如"单词已存在"），fallback 到通用错误
+      setErrorMsg(err?.message || (useTargetUi ? "An unexpected error occurred." : "发生意外错误。"));
     } finally {
       setIsAdding(false);
     }

@@ -226,17 +226,20 @@ export default function App() {
         },
         body: JSON.stringify({ spelling, language: wordLang }),
       });
-      if (!res.ok) return false;
-      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "添加单词失败");
+      }
+
       await Promise.all([
         fetchStats(token, selectedLanguage),
         fetchWords(token, selectedLanguage),
         fetchDueWords(token, selectedLanguage)
       ]);
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to create word:", err);
-      return false;
+      throw err; // 往上抛，让 WordList 显示具体错误
     }
   };
 
