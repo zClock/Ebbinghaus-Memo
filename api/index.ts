@@ -1,18 +1,16 @@
-import type { Request, Response } from "express";
-import app from "../server";
-
 /**
  * Vercel Serverless Function 入口
  *
- * Vercel Node.js runtime 期望默认导出是一个 handler 函数
- * (req: IncomingMessage, res: ServerResponse) => void
+ * 为什么这层存在：Vercel 的 @vercel/node runtime 在 ESM 模式下
+ * 要求 api/ 内的文件只能 import 同目录或 npm 包，
+ * 直接 import 项目根的 server.ts 会报 ERR_MODULE_NOT_FOUND。
  *
- * 直接 export default app 在新版 Vercel 上可能不被正确识别，
- * 因此这里显式把请求转发给 Express app 处理。
- *
- * 注意：app 本身已经是 (req, res) => void 的可调用对象，
- * 但为了类型与运行时双保险，这里用显式包装。
+ * 因此真正的 Express app 实现放在 api/server.ts（同目录），
+ * 这里只做 handler 适配。
  */
+import type { Request, Response } from "express";
+import app from "./server";
+
 export default function handler(req: Request, res: Response) {
-  return app(req, res);
+  return app(req as any, res as any);
 }
