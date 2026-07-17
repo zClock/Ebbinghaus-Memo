@@ -44,6 +44,12 @@
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
 │       └── translations.ts    # 多语言文案
+├── tests/
+│   ├── unit/                 # 单元测试（纯函数、算法、数据映射）
+│   │   └── srs-algorithm.test.ts
+│   └── integration/          # 集成测试（supertest + vi.mock 内存数据库）
+│       └── firebase-removal.test.ts
+├── vitest.config.ts       # Vitest 配置
 ├── .env.local             # 本地环境变量（**不提交**，已在 .gitignore）
 ├── .env.example           # 环境变量示例（提交）
 └── package.json
@@ -57,6 +63,16 @@ npm install
 
 # 启动开发服务器（Express + Vite 中间件，端口 3003）
 npm run dev
+
+# 运行全部测试（Vitest）
+npm test
+
+# 只跑单元测试 / 集成测试
+npm run test:unit
+npm run test:integration
+
+# 测试 watch 模式（开发时持续监听）
+npm run test:watch
 
 # 类型检查（注意：当前有已知报错，详见 spec.md §6）
 npm run lint
@@ -118,9 +134,17 @@ npm run start
 
 ### 不做的事
 - ❌ 不主动加文档文件（除非明确要求）
-- ❌ 不加测试框架（项目目前无测试）
 - ❌ 不加 eslint/prettier 配置（除非明确要求）
 - ❌ 不加多余的环境变量校验中间件
+
+### 测试约定（强制）
+**所有代码改动必须配测试**。新功能上线前，相关测试必须全绿。
+- **框架**：Vitest（已在 [package.json](file:///package.json) 配置好）
+- **单元测试**：放在 `tests/unit/`，测纯函数、算法、数据映射等不依赖外部的逻辑
+- **集成测试**：放在 `tests/integration/`，用 `vi.mock` 替换 `serverDb` 模块为内存版假数据库，再用 `supertest` 对 `app` 实例发请求
+- **运行**：`npm test`（一次性）/ `npm run test:watch`（监听）
+- **覆盖范围**：业务核心逻辑必须有测试；样式/UI 细节不强制
+- **修改已有功能时**：先看 `tests/` 里有没有相关测试，有则更新，没有则补
 
 ## 8. 当前已知问题
 
