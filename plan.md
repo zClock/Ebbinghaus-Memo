@@ -24,13 +24,10 @@
 
 ## 2. 代码质量（P1）
 
-### 2.1 🚧 修复 TypeScript 类型错误
-- **现状**：`npm run lint` 报 14+ 个错误（详见 spec.md §6.1）
-- **根本原因**：`TranslationSet` 接口与 5 种语言翻译对象不同步；WordList 引用大量不存在的翻译键
-- **子任务**：
-  - 🔲 补齐 [src/lib/translations.ts](file:///src/lib/translations.ts) 中缺失的翻译字段（Chinese/English/Japanese/Spanish/French/Portuguese）
-  - 🔲 修正 [src/components/WordList.tsx](file:///src/components/WordList.tsx) 中拼错的字段引用（`addSuccessMsg` → `addedSuccess` 等）
-- **验收**：`npm run lint` 0 错误
+### 2.1 ✅ 修复 TypeScript 类型错误（v1.6 已大部分解决）
+- **现状**：原 `npm run lint` 报 14+ 个错误（详见 spec.md §7.1）
+- **v1.6 进展**：补齐了 WordList 引用的 59 个翻译键 × 5 种目标语言，以及 `emptyLibraryCta`、TranslationSet 接口字段，主要 lint 错误已消除
+- **遗留**：少量历史字段（如 `addSuccessMsg` / `regenSuccessMsg`）可能仍待清理，建议下一次 lint 跑完看剩余项
 
 ### 2.2 🔲 统一 AI 模型配置
 - **现状**：`gemini-3.5-flash` / `gemini-3.1-flash-lite` 硬编码在 [api/index.ts](file:///api/index.ts)
@@ -50,13 +47,15 @@
 
 ## 3. 测试与质量保证（P1）
 
-### 3.1 🚧 集成测试重写
-- **现状**：`tests/integration/firebase-removal.test.ts` 因 serverDb 内联后无法 vi.mock，当前 `.skip`
-- **目标**：改为基于真实本地 JSON 的端到端集成测试（启动 Express app + 临时 db.json + supertest）
-- **覆盖范围**：注册/登录、单词 CRUD、复习提交、时间旅行、重置
+### 3.1 ✅ E2E 测试替代集成测试（v1.6 完成）
+- **现状**：`tests/integration/firebase-removal.test.ts` 因 serverDb 内联后无法 vi.mock，早已 `.skip`
+- **v1.6 解决方案**：不再重写 vitest 集成测试，改为引入 Playwright E2E（17 个用例覆盖核心流程）
+- **基建**：独立 dev server (port 3100) + 独立 `data/db.test.json` + GitHub Actions CI 自动跑
+- **后续可继续扩充**：移动端 viewport 测试、非英语词库流程、批量导入 .txt 文件上传等
 
 ### 3.2 🔲 i18n 翻译键统一
-- **现状**：translations.ts 存在两套相似命名（如 `addedSuccess` vs `addSuccessMsg`、`spellingAddPlaceholder` vs `inputWordLabel`）
+- **现状**：translations.ts 仍存在两套相似命名（如 `addedSuccess` vs `addSuccessMsg`、`spellingAddPlaceholder` vs `inputWordLabel`）
+- **v1.6 进展**：缺失的 59 个键已全部补齐（不再有空白问题），但冗余命名仍在
 - **目标**：统一命名，删除冗余键，把 WordList 切换到正确键
 - **影响**：6 种语言 × 多个 key，风险较高，建议单独迭代
 
@@ -127,6 +126,20 @@
 
 ## 7. 已完成项目归档
 
+### v1.6（2026-07-17）i18n 完整化 + E2E 测试基建
+- ✅ 补齐 5 种目标语言 × 59 个 WordList 翻译键（共 +295 条）
+- ✅ `getTranslation` 加 `{...Chinese, ...target}` 兜底（防御性）
+- ✅ 补齐 `emptyLibraryCta` 6 语言翻译
+- ✅ 修复 Dashboard 漏解构 `onNavigateWords` 导致按钮抛 ReferenceError
+- ✅ 修复空词库按钮跳转到不存在的 view `"words"`（改为 `"library"`）
+- ✅ 引入 Playwright + 17 个 E2E 测试 + GitHub Actions 自动化
+- ✅ `api/index.ts` DB_PATH 支持 env 覆盖 / `server.ts` PORT 支持 env
+
+### v1.5（2026-07-17）管理员白名单 + 浏览器 favicon
+- ✅ Dashboard 时光机 + 重置系统数据库两个功能改为仅 `wujizong@gmail.com` 可见
+- ✅ 普通用户隐藏后左侧分布图自动 `lg:col-span-12` 占满
+- ✅ `index.html` 内联 SVG favicon（学士帽 + indigo 底）
+
 ### v1.4（2026-07-17）多语言支持修复
 - ✅ regenerate 接口传 word.language 给 AI
 - ✅ AI prompt schema description 动态化（不再硬编码 English）
@@ -161,5 +174,6 @@
 
 ## 版本历史
 
+- **v1.3（2026-07-17）**：基于 v1.6 完成情况更新——i18n 完整化、Playwright E2E 替代 vitest 集成测试、管理员白名单、favicon。重新组织"已完成项目归档"加入 v1.5 / v1.6 章节。
 - **v1.1（2026-07-17）**：基于 v1.0 plan，新增 i18n 翻译键统一、Vercel bundle 优化、集成测试重写、非英语词典 API、"All"视图提示、WordList 虚拟时间一致性等 6 项待办（来自多语言审计）。
 - **v1.0（2026-07-17）**：基线版本。基于代码调研梳理出 4 大类共 12 项待办。

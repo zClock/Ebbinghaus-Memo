@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.4（2026-07-17，多语言支持修复 + Vercel 部署修复 + 错词重考）
+- **当前版本**：v1.6（2026-07-17，管理员白名单 + i18n 完整化 + E2E 测试基建）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -63,6 +63,22 @@
   - AI 生成释义时 schema description 根据 `targetLanguage` 动态生成（不再硬编码 English）
   - ReviewSession 例句挖空使用 Unicode-safe 字符串替换（支持日语/中文等非 `\b` 边界语言）
   - WordList 阶段标签显示真实 SRS 间隔 `[1, 2, 4, 7, 15, 30]` 天（6 种 UI 语言全覆盖）
+- **翻译完整性（v1.6）**：WordList 引用的 84 个翻译键已在 6 种语言全部齐全；`getTranslation` 加 Chinese 兜底 `{...Chinese, ...target}`，避免未来新增键时再出现空白
+- **UI 文案完整性**：emptyLibraryCta / 所有按钮 / Tab 标签 / 阶段标签全部覆盖 6 种语言
+
+### 1.8 管理员白名单（v1.5）
+- **时光机**（时间快进）+ **重置系统数据库** 两个高风险功能仅对 `wujizong@gmail.com` 可见
+- 判断逻辑：[src/components/Dashboard.tsx](file:///src/components/Dashboard.tsx) 的 `isPrivileged = user?.email === "wujizong@gmail.com"`
+- 普通用户登录时：
+  - 隐藏时光机卡片（不渲染"快进 1/3/7/30 天"等按钮）
+  - 隐藏重置系统数据库卡片
+  - 左侧「记忆阶段分布图」自动扩展为 `lg:col-span-12` 整行占满，避免排版空洞
+- 管理员登录时：保持原 7/5 双列布局
+
+### 1.9 浏览器 favicon（v1.5）
+- [index.html](file:///index.html) 内联 SVG data URI 作为 favicon
+- 图形：学士帽（与全站 lucide `GraduationCap` 一致）+ indigo 圆角底（`#4F46E5`）
+- 无额外文件请求，支持高 DPI，主题切换不丢失
 
 ---
 
@@ -172,44 +188,80 @@
 
 ---
 
-## 6. 已知问题与限制
+## 6. 测试规格（v1.6）
 
-### 6.1 TypeScript 类型错误（不影响运行）
+### 6.1 测试分层
+| 层 | 框架 | 路径 | 状态 |
+|---|---|---|---|
+| 单元测试 | Vitest | `tests/unit/` | ✅ SRS 算法 + 错词重考队列（共 12 个用例）|
+| 集成测试 | Vitest + supertest | `tests/integration/` | ⚠️ `.skip`（见 §6.7 已知问题）|
+| E2E 测试 | Playwright | `tests/e2e/` | ✅ 17 个用例覆盖核心用户流程 |
+
+### 6.2 E2E 覆盖范围
+| Spec 文件 | 用例数 | 覆盖场景 |
+|---|---|---|
+| [auth.spec.ts](file:///tests/e2e/auth.spec.ts) | 5 | API 注册、API 登录、错误密码（400）、重复邮箱（400）、UI 登录进主页 |
+| [word-library.spec.ts](file:///tests/e2e/word-library.spec.ts) | 4 | 列表显示、API 获取、搜索过滤、Tab 切换 |
+| [review-session.spec.ts](file:///tests/e2e/review-session.spec.ts) | 3 | 空复习提示、进入复习流程（闪卡模式）、提交 API |
+| [navigation-i18n.spec.ts](file:///tests/e2e/navigation-i18n.spec.ts) | 3 | 4 Tab 切换、中英 UI 切换、切回中文 |
+| [admin-features.spec.ts](file:///tests/e2e/admin-features.spec.ts) | 2 | 普通用户隐藏时光机/重置、wujizong 可见 |
+
+### 6.3 E2E 基建设计
+- **独立 dev server**：Playwright 启动 `npm run dev` 时注入 `PORT=3100 DB_PATH=./data/db.test.json`，**绝不污染本地开发数据**
+- **数据隔离**：每个 `beforeEach` 调用 `resetDb()` 把 `db.test.json` 重置为空数据库
+- **绕开外部 API**：`fixtures.ts` 的 `addWordToDb` 直接读写文件 seed 单词，不触发 Gemini / dictionaryapi.dev
+- **CI 模式**：`.github/workflows/e2e.yml` 强制清空 `SUPABASE_*` / `GEMINI_API_KEY` 环境变量，跑纯本地 JSON 模式
+- **失败追溯**：CI 失败时上传 `playwright-report/` + `test-results/` 作为 artifact（保留 7-14 天）
+- **触发时机**：每次 push/PR 到 main/develop
+
+---
+
+## 7. 已知问题与限制
+
+### 7.1 TypeScript 类型错误（不影响运行）
 `npm run lint` 会报错，原因：
 - [src/components/WordList.tsx](file:///src/components/WordList.tsx) 引用了 `translations.ts` 中**不存在的字段**（如 `addSuccessMsg` / `regenSuccessMsg` / `wordListChartTitle` 等）
 - [src/lib/translations.ts](file:///src/lib/translations.ts) 的 `TranslationSet` 接口新增了字段，但 5 种语言的翻译对象没有同步补全
 
 **影响**：仅 `tsc` 报错；`tsx` 运行时不做严格检查，应用可正常启动。
 
-### 6.2 密码哈希弱
+### 7.2 密码哈希弱
 - 使用 `crypto.createHash("sha256")` 单次哈希（无 salt、无慢哈希）
 - **不应**在生产环境直接暴露，建议迁移到 bcrypt/argon2
 
-### 6.3 AI 模型名写死
+### 7.3 AI 模型名写死
 - `gemini-3.5-flash` / `gemini-3.1-flash-lite` 硬编码在代码里，未来 Gemini 升级需手动改
 
-### 6.4 本地数据库非并发安全
+### 7.4 本地数据库非并发安全
 - `data/db.json` 是全量读写，多请求并发时有覆盖风险
 - 生产建议切到 Supabase
 
-### 6.5 时间旅行按用户隔离吗
+### 7.5 时间旅行按用户隔离吗
 - **否**。`system_offset_ms` 是全局配置（`system_config` 表），所有用户共享同一虚拟时间
 - 多租户场景下这是个语义问题
 
-### 6.6 Vercel 单文件约束（v1.3 引入）
+### 7.6 Vercel 单文件约束（v1.3 引入）
 - `api/index.ts` 必须是单文件 serverless function（业务逻辑 + 数据库适配层全部内联）
 - 拆分多文件会导致 `ERR_MODULE_NOT_FOUND`
 - 代价：`api/index.ts` 文件较大（~1800 行），后续可考虑用 esbuild bundle 优化
 
-### 6.7 集成测试暂停（v1.3 引入）
+### 7.7 集成测试暂停（v1.3 引入，v1.6 已用 E2E 替代）
 - `tests/integration/firebase-removal.test.ts` 当前 `.skip`
 - 原因：serverDb 内联到 `api/index.ts` 后无法 vi.mock
 - 替代方案：新集成测试改为基于真实本地 JSON 的端到端测试
 
 ---
 
-## 7. 版本历史
+## 8. 版本历史
 
+- **v1.6（2026-07-17）**：i18n 完整化 + E2E 测试基建 + 错误修复。
+  - 🔴 i18n：5 种目标语言（英/日/西/法/葡）补齐 WordList 用的 59 个翻译键（共 +295 条），修复切目标语言后按钮/tab/标签空白；`getTranslation` 加 `{...Chinese, ...target}` 兜底；补齐 `emptyLibraryCta` 6 语言翻译（修复英文模式下空词库引导按钮仍是中文）
+  - 🟡 Bug：修复 Dashboard 参数解构漏 `onNavigateWords` 导致点击「去添加我的第一个单词」按钮抛 ReferenceError；修复空词库按钮跳转到不存在的 view `"words"`
+  - 🟢 测试：引入 Playwright + 17 个 E2E 测试（认证 5 + 词库 4 + 复习 3 + 导航/i18n 3 + 管理员白名单 2），独立 dev server (port 3100) + 独立 db.test.json，GitHub Actions 自动跑
+  - 🔵 工程：`api/index.ts` DB_PATH 支持 env 覆盖（测试隔离用）；`server.ts` PORT 支持 env；`.gitignore` 加 `data/*.json` / playwright 产物
+- **v1.5（2026-07-17）**：管理员白名单 + 浏览器 favicon。
+  - 🔴 安全：时光机 / 重置系统数据库两个高风险功能改为仅 `wujizong@gmail.com` 可见（`isPrivileged`），普通用户隐藏后左侧分布图自动 col-span-12 占满
+  - 🔵 UX：`index.html` 内联 SVG favicon（学士帽 + indigo 底），无额外网络请求
 - **v1.4（2026-07-17）**：多语言支持修复（10 项）。
   - 🔴 严重：regenerate 传 language / AI prompt schema 动态化 / system/reset 按语言重置（不再塞英语种子词）/ ReviewSession Unicode-safe 例句挖空
   - 🟡 中等：WordList 阶段标签修正为真实 SRS 间隔 [1,2,4,7,15,30] 天（6 种 UI 语言 + 2 种 UI 模式全覆盖）

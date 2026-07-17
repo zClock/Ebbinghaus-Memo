@@ -26,32 +26,43 @@
 
 ```
 .
-├── server.ts              # 本地开发入口（监听 3003 端口 + Vite 中间件）
+├── server.ts              # 本地开发入口（监听 3003 端口 + Vite 中间件，PORT 可环境变量覆盖）
 ├── api/
-│   ├── index.ts           # Vercel Serverless 单文件入口（全部 Express 业务逻辑内联于此）
+│   ├── index.ts           # Vercel Serverless 单文件入口（全部 Express 业务逻辑内联于此，DB_PATH 支持 env 覆盖）
 │   └── serverDb.ts        # 数据库适配层（Supabase / 本地 JSON 双实现）—— ⚠️ 已内联进 api/index.ts
-├── data/db.json           # 本地 JSON 数据库（默认）
+├── data/                  # 本地 JSON 数据库目录（data/*.json 已 gitignore）
+│   ├── db.json            # 本地开发数据库（默认，不入库）
+│   └── db.test.json       # E2E 测试专用数据库（playwright 启动时自动创建）
 ├── supabase-schema.sql    # Supabase 建表 SQL
 ├── src/
-│   ├── App.tsx            # 前端主应用（路由 + 状态 + API 调用）
+│   ├── App.tsx            # 前端主应用（路由 + 状态 + API 调用，把 user 透传给 Dashboard）
 │   ├── main.tsx           # React 入口
 │   ├── types.ts           # 前端类型定义（User / Word / Stats）
 │   ├── components/
 │   │   ├── Auth.tsx       # 登录/注册（level 已移除，dailyGoal 输入修复）
-│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导）
+│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导 + 管理员白名单 isPrivileged）
 │   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
 │   │   ├── ReviewSession.tsx  # 复习会话（错词重考 + Unicode-safe 例句挖空）
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       ├── translations.ts    # 多语言文案（6 种 UI 语言）
+│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 84+ 键，含 Chinese 兜底）
 │       └── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
 ├── tests/
-│   ├── unit/                 # 单元测试（纯函数、算法、数据映射）
+│   ├── unit/                 # 单元测试（Vitest，纯函数、算法、数据映射）
 │   │   ├── srs-algorithm.test.ts
 │   │   └── reviewQueue.test.ts   # 错词重考队列逻辑（11 个用例）
-│   └── integration/          # 集成测试（supertest + vi.mock 内存数据库）
-│       └── firebase-removal.test.ts  # ⚠️ 当前 .skip（serverDb 内联后无法 mock，待重写）
+│   ├── integration/          # 集成测试（⚠️ firebase-removal.test.ts 已 .skip）
+│   └── e2e/                  # E2E 测试（Playwright，17 个用例覆盖核心用户流程）
+│       ├── fixtures.ts           # 测试 fixture（cleanDb / apiHelpers / uiHelpers）
+│       ├── auth.spec.ts          # 认证流程（5 个）
+│       ├── word-library.spec.ts  # 词库管理（4 个）
+│       ├── review-session.spec.ts# 复习会话（3 个）
+│       ├── navigation-i18n.spec.ts # 导航与国际化（3 个）
+│       └── admin-features.spec.ts  # 管理员白名单（2 个）
+├── scripts/                    # 一次性脚本（如 build_docx.py）
+├── playwright.config.ts        # Playwright 配置（独立 dev server port 3100）
+├── .github/workflows/e2e.yml   # GitHub Actions：每次 push/PR 自动跑 E2E
 ├── vitest.config.ts       # Vitest 配置
 ├── .env.local             # 本地环境变量（**不提交**，已在 .gitignore）
 ├── .env.example           # 环境变量示例（提交）
@@ -70,15 +81,21 @@
 # 安装依赖（项目原用 bun，本地用 npm 也兼容）
 npm install
 
-# 启动开发服务器（Express + Vite 中间件，端口 3003）
+# 启动开发服务器（Express + Vite 中间件，端口 3003，可用 PORT 覆盖）
 npm run dev
 
-# 运行全部测试（Vitest）
+# 运行全部单元/集成测试（Vitest）
 npm test
 
 # 只跑单元测试 / 集成测试
 npm run test:unit
 npm run test:integration
+
+# 运行 E2E 测试（Playwright，会启动独立 dev server @ 3100 + 独立 db.test.json）
+npm run test:e2e
+
+# E2E 带 UI 调试模式（浏览器可视化 + watcher）
+npm run test:e2e:ui
 
 # 测试 watch 模式（开发时持续监听）
 npm run test:watch
@@ -147,14 +164,25 @@ npm run start
 - ❌ 不加多余的环境变量校验中间件
 
 ### 测试约定（强制）
-**所有代码改动必须配测试**。新功能上线前，相关测试必须全绿。
-- **框架**：Vitest（已在 [package.json](file:///package.json) 配置好）
-- **单元测试**：放在 `tests/unit/`，测纯函数、算法、数据映射等不依赖外部的逻辑
-- **集成测试**：放在 `tests/integration/`，用 `vi.mock` 替换 `serverDb` 模块为内存版假数据库，再用 `supertest` 对 `app` 实例发请求
-- **运行**：`npm test`（一次性）/ `npm run test:watch`（监听）
-- **覆盖范围**：业务核心逻辑必须有测试；样式/UI 细节不强制
+**所有代码改动必须配测试**。新功能上线前，相关测试必须全绿。项目目前有三层测试：
+
+| 类型 | 框架 | 路径 | 用途 |
+|---|---|---|---|
+| 单元测试 | Vitest | `tests/unit/` | 纯函数、算法、数据映射 |
+| 集成测试 | Vitest + supertest | `tests/integration/` | ⚠️ 当前 `.skip`（见 spec.md §6.7）|
+| E2E 测试 | Playwright | `tests/e2e/` | 真实浏览器跑核心用户流程 |
+
+**E2E 测试要点（v1.6 引入）**：
+- 启动**独立 dev server**（端口 3100）+ **独立数据库**（`data/db.test.json`），**绝不污染本地开发数据**
+- 通过直接读写 `db.test.json` 文件 seed 单词，**绕过 AI / Dictionary API 调用**（CI 无需 GEMINI_API_KEY）
+- `tests/e2e/fixtures.ts` 提供 `cleanDb` / `apiHelpers` / `uiHelpers` fixture，所有 spec 共用
+- GitHub Actions（`.github/workflows/e2e.yml`）每次 push/PR 自动跑，CI 环境强制清空 Supabase/Gemini env 跑纯本地 JSON 模式
+- 失败时上传 HTML 报告 + 失败截图/trace 作为 artifact
+
+**通用规则**：
 - **修改已有功能时**：先看 `tests/` 里有没有相关测试，有则更新，没有则补
-- ⚠️ **集成测试现状**：`firebase-removal.test.ts` 因 serverDb 内联到 `api/index.ts` 后无法 vi.mock，当前 `.skip`。新集成测试应改用基于真实本地 JSON 的端到端方式
+- **覆盖范围**：业务核心逻辑必须有测试；样式/UI 细节不强制
+- **运行**：`npm test`（vitest）/ `npm run test:e2e`（playwright）
 
 ### 纯函数优先原则
 - **业务核心逻辑应抽成纯函数**，放在 `src/lib/` 下，配单元测试
