@@ -318,7 +318,7 @@ const profileTranslations: Record<string, any> = {
       "count-100": {
         name: "词海逐浪",
         desc: "词库累计 100 个单词",
-        longDesc: "百词斩破！您已经成功驾驭了大规模记忆节点，是当之无愧 of 词海弄潮儿。",
+        longDesc: "百词斩破！您已经成功驾驭了大规模记忆节点，是当之无愧的词海弄潮儿。",
         quote: "乘风破浪会有时，直挂云帆济沧海。"
       },
       "mastered-3": {
@@ -481,7 +481,7 @@ const profileTranslations: Record<string, any> = {
     levelLabel: "目標試験レベル / 単語帳設定",
     dailyGoalLabel: "毎日の復習目標 (単語数)",
     saveBtn: "プロフィールの保存",
-    changePwdTitle: "パスワード of 変更",
+    changePwdTitle: "パスワードの変更",
     changePwdDesc: "データ安全のため、定期的に複雑なパスワードに変更してください",
     oldPwdLabel: "現在のパスワード",
     oldPwdPlaceholder: "現在のパスワードを入力",
@@ -952,7 +952,7 @@ const profileTranslations: Record<string, any> = {
       "count-50": {
         name: "Erudito",
         desc: "Acumular 50 palavras na biblioteca",
-        longDesc: "50 novas palavras foram introduadas ao seu modelo de prevenção do esquecimento. Seu cérebro está explodindo!",
+        longDesc: "50 novas palavras foram introduzidas ao seu modelo de prevenção do esquecimento. Seu cérebro está explodindo!",
         quote: "Aprenda amplamente, seja firme na sua resolução, pergunte com seriedade e reflita de perto."
       },
       "count-100": {

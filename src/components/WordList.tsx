@@ -400,53 +400,53 @@ export default function WordList({
     const count = words.filter(w => w.reviewStage === stageNum).length;
     const labels = useTargetUi ? (
       selectedLanguage === "Japanese" ? [
-        "ステージ 0",
-        "ステージ 1 (20分)",
-        "ステージ 2 (1時間)",
-        "ステージ 3 (12時間)",
-        "ステージ 4 (1日)",
-        "ステージ 5 (2日)",
+        "ステージ 0 (新規)",
+        "ステージ 1 (1日)",
+        "ステージ 2 (2日)",
+        "ステージ 3 (4日)",
+        "ステージ 4 (7日)",
+        "ステージ 5 (15日)",
         "ステージ 6 (習得)"
       ] : selectedLanguage === "Spanish" ? [
-        "Fase 0",
-        "Fase 1 (20m)",
-        "Fase 2 (1h)",
-        "Fase 3 (12h)",
-        "Fase 4 (1d)",
-        "Fase 5 (2d)",
+        "Fase 0 (Nueva)",
+        "Fase 1 (1d)",
+        "Fase 2 (2d)",
+        "Fase 3 (4d)",
+        "Fase 4 (7d)",
+        "Fase 5 (15d)",
         "Fase 6 (Dominio)"
       ] : selectedLanguage === "French" ? [
-        "Étape 0",
-        "Étape 1 (20m)",
-        "Étape 2 (1h)",
-        "Étape 3 (12h)",
-        "Étape 4 (1j)",
-        "Étape 5 (2j)",
+        "Étape 0 (Nouvelle)",
+        "Étape 1 (1j)",
+        "Étape 2 (2j)",
+        "Étape 3 (4j)",
+        "Étape 4 (7j)",
+        "Étape 5 (15j)",
         "Étape 6 (Maîtrisé)"
       ] : selectedLanguage === "Portuguese" ? [
-        "Estágio 0",
-        "Estágio 1 (20m)",
-        "Estágio 2 (1h)",
-        "Estágio 3 (12h)",
-        "Estágio 4 (1d)",
-        "Estágio 5 (2d)",
+        "Estágio 0 (Nova)",
+        "Estágio 1 (1d)",
+        "Estágio 2 (2d)",
+        "Estágio 3 (4d)",
+        "Estágio 4 (7d)",
+        "Estágio 5 (15d)",
         "Estágio 6 (Dominado)"
       ] : [
         "Stage 0 (New)",
-        "Stage 1 (20m)",
-        "Stage 2 (1h)",
-        "Stage 3 (12h)",
-        "Stage 4 (1d)",
-        "Stage 5 (2d)",
+        "Stage 1 (1d)",
+        "Stage 2 (2d)",
+        "Stage 3 (4d)",
+        "Stage 4 (7d)",
+        "Stage 5 (15d)",
         "Stage 6 (Mastered)"
       ]
     ) : [
       "阶段0 (新词)",
-      "阶段1 (20m)",
-      "阶段2 (1h)",
-      "阶段3 (12h)",
-      "阶段4 (1d)",
-      "阶段5 (2d)",
+      "阶段1 (1天)",
+      "阶段2 (2天)",
+      "阶段3 (4天)",
+      "阶段4 (7天)",
+      "阶段5 (15天)",
       "阶段6 (掌握)"
     ];
     return {

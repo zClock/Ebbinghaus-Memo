@@ -770,14 +770,29 @@ async function submitReview(userId: string, reviewResults: any[], vTime: Date): 
   return { updatedWords, newHistories };
 }
 
-async function resetUserWords(userId: string, userDefaultWords: any[], vTime: Date): Promise<void> {
+async function resetUserWords(userId: string, userDefaultWords: any[], vTime: Date, language?: string): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     try {
-      const { error: delWordsErr } = await supabase
-        .from("words")
-        .delete()
-        .eq("user_id", userId);
-      if (delWordsErr) throw delWordsErr;
+      // 按语言筛选删除（若未传 language 则删除全部）
+      let wordIdsToDelete: string[] = [];
+      if (language) {
+        const { data: langWords, error: queryErr } = await supabase
+          .from("words")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("language", language);
+        if (queryErr) throw queryErr;
+        wordIdsToDelete = (langWords || []).map((w: any) => w.id);
+      }
+
+      if (wordIdsToDelete.length > 0) {
+        await supabase.from("histories").delete().in("word_id", wordIdsToDelete);
+        await supabase.from("words").delete().in("id", wordIdsToDelete);
+      } else if (!language) {
+        // 无 language 参数，全量删除
+        await supabase.from("histories").delete().eq("user_id", userId);
+        await supabase.from("words").delete().eq("user_id", userId);
+      }
 
       if (userDefaultWords.length > 0) {
         const { error: insWordsErr } = await supabase
@@ -793,8 +808,15 @@ async function resetUserWords(userId: string, userDefaultWords: any[], vTime: Da
   }
 
   const db = readLocalDb();
-  db.words = db.words.filter(w => w.userId !== userId);
-  db.histories = db.histories.filter(h => h.userId !== userId);
+  if (language) {
+    // 本地 JSON：按语言筛选删除
+    const langWordIds = new Set(db.words.filter(w => w.userId === userId && w.language === language).map(w => w.id));
+    db.words = db.words.filter(w => !langWordIds.has(w.id));
+    db.histories = db.histories.filter(h => !langWordIds.has(h.wordId));
+  } else {
+    db.words = db.words.filter(w => w.userId !== userId);
+    db.histories = db.histories.filter(h => h.userId !== userId);
+  }
   db.words.push(...userDefaultWords);
   writeLocalDb(db);
 }
@@ -1042,9 +1064,9 @@ Return ONLY a JSON object with exactly these keys:
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                phonetic: { type: Type.STRING, description: "IPA phonetic, e.g. /ɪˈfemərəl/" },
+                phonetic: { type: Type.STRING, description: `IPA phonetic for ${targetLanguage}, e.g. /ɪˈfemərəl/` },
                 definition: { type: Type.STRING, description: "Chinese definition/translations, e.g. adj. 短暂的，朝生暮死的" },
-                example: { type: Type.STRING, description: "Elegant, clean English example sentence." },
+                example: { type: Type.STRING, description: `Elegant, clean ${targetLanguage} example sentence.` },
                 exampleTranslation: { type: Type.STRING, description: "Natural Chinese translation of the example sentence." },
                 mnemonic: { type: Type.STRING, description: "Mnemonic association or word breakdown in Chinese, helping memorization." }
               },
@@ -1756,7 +1778,7 @@ app.post("/api/words/:id/regenerate", authMiddleware, async (req: any, res) => {
       return res.status(404).json({ error: "Word not found or unauthorized" });
     }
 
-    const aiData = await generateAiWordDetails(word.spelling);
+    const aiData = await generateAiWordDetails(word.spelling, word.language || "English");
     const updated = await updateWord(req.userId, id, {
       phonetic: aiData.phonetic || word.phonetic,
       definition: aiData.definition,
@@ -1797,23 +1819,16 @@ app.post("/api/system/time-travel", authMiddleware, async (req: any, res) => {
 });
 
 app.post("/api/system/reset", authMiddleware, async (req: any, res) => {
-  const { fullReset } = req.body;
+  const { fullReset, language } = req.body;
   try {
     const vTime = await getVirtualTime();
     if (fullReset) {
       const userId = req.userId;
-      const userDefaultWords = defaultWords.map(w => ({
-        ...w,
-        id: "word_" + Math.random().toString(36).substring(2, 11),
-        userId: userId,
-        createdAt: vTime.toISOString(),
-        lastResetAt: vTime.toISOString(),
-        nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString()
-      }));
-
-      await resetUserWords(userId, userDefaultWords, vTime);
+      // 按语言重置：只清空指定语言的词库，不再塞种子词（符合"注册不加种子词"的新设计）
+      await resetUserWords(userId, [], vTime, language);
       const updatedVTime = await getVirtualTime();
-      return res.json({ success: true, message: "您的个人词库已成功重置为初始种子状态！", virtualTime: updatedVTime.toISOString() });
+      const langLabel = language || "所有";
+      return res.json({ success: true, message: `您的${langLabel}词库已清空并重置复习状态！`, virtualTime: updatedVTime.toISOString() });
     } else {
       await setSystemOffsetMs(0);
       const updatedVTime = await getVirtualTime();
