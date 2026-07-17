@@ -31,7 +31,10 @@ if (isSupabaseConfigured) {
 // ==========================================
 // LOCAL FILE DATABASE (FALLBACK) CONFIG
 // ==========================================
-const DB_PATH = path.join(process.cwd(), "data", "db.json");
+const isVercel = !!process.env.VERCEL;
+const DB_PATH = isVercel
+  ? path.join("/tmp", "db.json")
+  : path.join(process.cwd(), "data", "db.json");
 
 interface User {
   id: string;
@@ -58,7 +61,7 @@ interface WordDbSchema {
 }
 
 function initLocalDb(): WordDbSchema {
-  const dataDir = path.join(process.cwd(), "data");
+  const dataDir = path.dirname(DB_PATH);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
@@ -234,7 +237,7 @@ export async function getSystemOffsetMs(): Promise<number> {
       return data ? Number(data.value) : 0;
     } catch (err) {
       console.error("[Database] Error reading systemOffsetMs from Supabase:", err);
-      // Fallback to local
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -247,10 +250,11 @@ export async function setSystemOffsetMs(ms: number): Promise<void> {
       const { error } = await supabase
         .from("system_config")
         .upsert({ key: "system_offset_ms", value: String(ms) });
-      if (!error) return;
-      throw error;
+      if (error) throw error;
+      return;
     } catch (err) {
       console.error("[Database] Error setting systemOffsetMs in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -271,6 +275,7 @@ export async function findUserByEmail(email: string): Promise<any | null> {
       return data ? fromDbUser(data) : null;
     } catch (err) {
       console.error("[Database] Error finding user by email in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -290,6 +295,7 @@ export async function findUserById(id: string): Promise<any | null> {
       return data ? fromDbUser(data) : null;
     } catch (err) {
       console.error("[Database] Error finding user by id in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -381,6 +387,7 @@ export async function findSessionByToken(token: string): Promise<any | null> {
       return data ? fromDbSession(data) : null;
     } catch (err) {
       console.error("[Database] Error finding session in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -398,6 +405,7 @@ export async function createSession(session: any): Promise<void> {
       return;
     } catch (err) {
       console.error("[Database] Error creating session in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -413,10 +421,11 @@ export async function deleteSession(token: string): Promise<void> {
         .from("sessions")
         .delete()
         .eq("token", token);
-      if (!error) return;
-      throw error;
+      if (error) throw error;
+      return;
     } catch (err) {
       console.error("[Database] Error deleting session in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -437,6 +446,7 @@ export async function getUserWords(userId: string): Promise<any[]> {
       return (data || []).map(fromDbWord);
     } catch (err) {
       console.error("[Database] Error reading words from Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -456,6 +466,7 @@ export async function getUserDueWords(userId: string, vTime: Date): Promise<any[
       return (data || []).map(fromDbWord);
     } catch (err) {
       console.error("[Database] Error reading due words from Supabase:", err);
+      throw err;
     }
   }
   // Local DB Fallback
@@ -478,6 +489,7 @@ export async function getUserHistories(userId: string): Promise<any[]> {
       return (data || []).map(fromDbHistory);
     } catch (err) {
       console.error("[Database] Error reading histories from Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -498,6 +510,7 @@ export async function findWordBySpelling(userId: string, spelling: string): Prom
       return data ? fromDbWord(data) : null;
     } catch (err) {
       console.error("[Database] Error finding word by spelling in Supabase:", err);
+      throw err;
     }
   }
   const db = readLocalDb();
@@ -689,7 +702,7 @@ export async function submitReview(userId: string, reviewResults: any[], vTime: 
       return { updatedWords, newHistories };
     } catch (err) {
       console.error("[Database] Error submitting reviews in Supabase:", err);
-      // fallback if error occurs
+      throw err;
     }
   }
 
