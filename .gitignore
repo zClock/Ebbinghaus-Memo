@@ -6,7 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
-package-lock.json
 
 # 本地运行时数据库（含测试用户/单词数据，不应入库）
 data/db.json
