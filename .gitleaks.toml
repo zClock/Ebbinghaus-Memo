@@ -1,0 +1,39 @@
+# Gitleaks 配置 —— 在默认规则基础上，豁免占位符文件
+# 文档：https://github.com/gitleaks/gitleaks
+
+title = "Ebbinghaus-Memo Secret Scanning"
+
+[extend]
+# 继承 gitleaks 内置默认规则（Google / AWS / GitHub / 通用 API key 等几十种）
+useDefault = true
+
+# 全局允许的文件（占位符 / 文档 / 模板，不可能包含真实密钥）
+[allowlist]
+description = "允许占位符文件、文档、测试 fixture（不可能含真实密钥）"
+paths = [
+  '''\.env\.example$''',           # 环境变量模板（占位符）
+  '''\.env\.example\.commented$''',
+  '''USER_MANUAL\.md$''',          # 用户手册
+  '''CLAUDE\.md$''',               # 项目协作指南
+  '''spec\.md$''',                 # 项目规格
+  '''plan\.md$''',                 # 项目规划
+  '''README\.md$''',
+  '''\.github/.*\.yml$''',         # CI 配置本身（里面只写占位符）
+  '''tests/.*$''',                 # 测试代码（fixtures 里可能有假 token）
+  '''scripts/.*\.py$''',           # 一次性脚本
+]
+
+# 全局允许的占位符字符串（即使扫到也不报警）
+regexes = [
+  '''MY_GEMINI_API_KEY''',
+  '''YOUR_GEMINI_API_KEY_PLACEHOLDER''',
+  '''your-project-id''',
+  '''your-anon-public-key''',
+  '''your-service-role-key''',
+  '''MY_APP_URL''',
+  '''test\+''',                    # 测试用邮箱
+  '''example\.com''',
+  '''example\.org''',
+]
+
+# 行内豁免：在代码行尾加 `# gitleaks:allow` 可临时豁免单行（慎用）
