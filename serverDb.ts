@@ -3,7 +3,8 @@ import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 // ==========================================
 // SUPABASE CONFIGURATION & LAZY INIT

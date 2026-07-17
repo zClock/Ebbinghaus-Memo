@@ -30,10 +30,11 @@ import {
   upsertUserLanguageSettings
 } from "./serverDb";
 
-dotenv.config();
+dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 const app = express();
-const PORT = 3000;
+const PORT = 3003;
 
 // Set up Google GenAI if key is present
 let ai: GoogleGenAI | null = null;
@@ -53,6 +54,19 @@ if (process.env.GEMINI_API_KEY) {
   }
 } else {
   console.log("No GEMINI_API_KEY found, running in dictionary-only/fallback mode.");
+}
+
+// GLM fallback configuration (Anthropic-compatible endpoint)
+const glmConfig = {
+  apiKey: process.env.GLM_API_KEY || "",
+  baseUrl: process.env.GLM_BASE_URL || "https://open.bigmodel.cn/api/anthropic",
+  model: process.env.GLM_MODEL || "glm-4.6"
+};
+const isGlmConfigured = Boolean(glmConfig.apiKey && glmConfig.apiKey !== "YOUR_GLM_API_KEY_HERE");
+if (isGlmConfigured) {
+  console.log(`GLM fallback configured: ${glmConfig.baseUrl} (model: ${glmConfig.model})`);
+} else {
+  console.log("GLM fallback not configured (fill GLM_API_KEY in .env.local to enable).");
 }
 
 // User and Session interfaces
@@ -153,43 +167,95 @@ async function generateAiWordDetails(spelling: string, targetLanguage: string = 
   exampleTranslation: string;
   mnemonic: string;
 }> {
-  if (!ai) {
-    throw new Error("Gemini API not configured");
-  }
-
   const prompt = `You are a high-quality smart ${targetLanguage} dictionary helper for Chinese learners.
 Generate comprehensive dictionary information for the word/phrase/character in ${targetLanguage}: "${spelling}".
 Produce the results strictly in the required JSON structure.
-Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for Japanese, etc.), clear with Chinese translation meanings, create a modern and helpful context example sentence in ${targetLanguage}, translate that sentence into natural Chinese, and provide a fun/etymological mnemonic association (like word roots, kanji/radical breakdown, similar sounding words, or funny stories) to help SRS memory.`;
+Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for Japanese, etc.), clear with Chinese translation meanings, create a modern and helpful context example sentence in ${targetLanguage}, translate that sentence into natural Chinese, and provide a fun/etymological mnemonic association (like word roots, kanji/radical breakdown, similar sounding words, or funny stories) to help SRS memory.
 
-  // We try multiple models because some models like gemini-3.5-flash might experience temporary high demand (503)
-  const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
-  let lastError: any = null;
+Return ONLY a JSON object with exactly these keys:
+{"phonetic": "...", "definition": "...", "example": "...", "exampleTranslation": "...", "mnemonic": "..."}`;
 
-  for (const model of modelsToTry) {
-    try {
-      console.log(`[AI Dict] Attempting details generation for "${spelling}" using model: ${model}`);
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              phonetic: { type: Type.STRING, description: "IPA phonetic, e.g. /ɪˈfemərəl/" },
-              definition: { type: Type.STRING, description: "Chinese definition/translations, e.g. adj. 短暂的，朝生暮死的" },
-              example: { type: Type.STRING, description: "Elegant, clean English example sentence." },
-              exampleTranslation: { type: Type.STRING, description: "Natural Chinese translation of the example sentence." },
-              mnemonic: { type: Type.STRING, description: "Mnemonic association or word breakdown in Chinese, helping memorization." }
-            },
-            required: ["phonetic", "definition", "example", "exampleTranslation", "mnemonic"]
+  // ----- Try Gemini first (primary) -----
+  if (ai) {
+    // We try multiple models because some models like gemini-3.5-flash might experience temporary high demand (503)
+    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[AI Dict] Attempting details generation for "${spelling}" using Gemini model: ${model}`);
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                phonetic: { type: Type.STRING, description: "IPA phonetic, e.g. /ɪˈfemərəl/" },
+                definition: { type: Type.STRING, description: "Chinese definition/translations, e.g. adj. 短暂的，朝生暮死的" },
+                example: { type: Type.STRING, description: "Elegant, clean English example sentence." },
+                exampleTranslation: { type: Type.STRING, description: "Natural Chinese translation of the example sentence." },
+                mnemonic: { type: Type.STRING, description: "Mnemonic association or word breakdown in Chinese, helping memorization." }
+              },
+              required: ["phonetic", "definition", "example", "exampleTranslation", "mnemonic"]
+            }
           }
-        }
+        });
+
+        const parsed = JSON.parse(response.text?.trim() || "{}");
+        console.log(`[AI Dict] Successfully generated details with Gemini model: ${model}`);
+        return {
+          phonetic: parsed.phonetic || "/-/",
+          definition: parsed.definition || "未知释义",
+          example: parsed.example || "No example sentence available.",
+          exampleTranslation: parsed.exampleTranslation || "暂无例句翻译。",
+          mnemonic: parsed.mnemonic || "暂无助记联想。"
+        };
+      } catch (err) {
+        console.error(`[AI Dict] Gemini generation failed for model ${model}:`, err);
+      }
+    }
+    console.log(`[AI Dict] All Gemini models failed for "${spelling}", falling back to GLM if configured.`);
+  } else {
+    console.log(`[AI Dict] Gemini not configured, trying GLM directly for "${spelling}".`);
+  }
+
+  // ----- Fallback to GLM (Anthropic-compatible endpoint) -----
+  if (isGlmConfigured) {
+    try {
+      console.log(`[AI Dict] Attempting details generation for "${spelling}" using GLM model: ${glmConfig.model}`);
+      const glmRes = await fetch(`${glmConfig.baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": glmConfig.apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: glmConfig.model,
+          max_tokens: 1024,
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ]
+        })
       });
 
-      const parsed = JSON.parse(response.text?.trim() || "{}");
-      console.log(`[AI Dict] Successfully generated details with model: ${model}`);
+      if (!glmRes.ok) {
+        const errText = await glmRes.text();
+        throw new Error(`GLM HTTP ${glmRes.status}: ${errText}`);
+      }
+
+      const glmData: any = await glmRes.json();
+      // Anthropic format: response.content is an array of {type: "text", text: "..."}
+      const rawText = Array.isArray(glmData.content)
+        ? glmData.content.map((c: any) => c.text || "").join("")
+        : "";
+      // Strip possible markdown code fences
+      const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const parsed = JSON.parse(jsonStr || "{}");
+      console.log(`[AI Dict] Successfully generated details with GLM model: ${glmConfig.model}`);
       return {
         phonetic: parsed.phonetic || "/-/",
         definition: parsed.definition || "未知释义",
@@ -198,12 +264,12 @@ Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for J
         mnemonic: parsed.mnemonic || "暂无助记联想。"
       };
     } catch (err) {
-      console.error(`[AI Dict] Generation failed for model ${model}:`, err);
-      lastError = err;
+      console.error(`[AI Dict] GLM generation failed for "${spelling}":`, err);
+      throw new Error(`Both Gemini and GLM failed: ${(err as Error).message}`);
     }
   }
 
-  throw lastError || new Error("All Gemini generation attempts failed");
+  throw new Error("No AI provider available (neither Gemini nor GLM configured or all failed)");
 }
 
 // SRS Intervals mapping (0 to 5, in days)
