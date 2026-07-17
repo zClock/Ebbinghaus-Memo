@@ -4,6 +4,8 @@
 
 # Run and deploy your AI Studio app
 
+> Ebbinghaus-Memo — 基于 AI 的艾宾浩斯记忆法背单词应用。
+
 This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/176d812f-b11d-41a4-8da2-54784e00cc6a
