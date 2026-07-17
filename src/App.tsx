@@ -523,7 +523,7 @@ export default function App() {
                 onResetTime={handleResetTime}
                 onResetDb={handleResetDb}
                 onStartReview={() => setCurrentView("review")}
-                onNavigateWords={() => setCurrentView("words")}
+                onNavigateWords={() => setCurrentView("library")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
                 user={user}
