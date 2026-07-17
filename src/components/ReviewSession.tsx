@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { getTranslation } from "../lib/translations";
+import { markIncorrect, markCorrect } from "../lib/reviewQueue";
 
 interface Word {
   id: string;
@@ -58,6 +59,8 @@ export default function ReviewSession({
   // Queue states
   const [activeQueue, setActiveQueue] = useState<Word[]>([]);
   const [incorrectQueue, setIncorrectQueue] = useState<Word[]>([]);
+  // ref 同步追踪 incorrectQueue 最新值，解决 setState 异步导致 handleAdvance 读取旧闭包的 bug
+  const incorrectQueueRef = useRef<Word[]>([]);
   const [firstTryFailures, setFirstTryFailures] = useState<Set<string>>(new Set());
   const [alreadyReviewedIds, setAlreadyReviewedIds] = useState<Set<string>>(new Set());
 
@@ -79,6 +82,7 @@ export default function ReviewSession({
     if (dueWords.length === 0) return;
     setActiveQueue([...dueWords]);
     setIncorrectQueue([]);
+    incorrectQueueRef.current = [];
     setFirstTryFailures(new Set());
     setAlreadyReviewedIds(new Set());
     setCurrentIndex(0);
@@ -91,6 +95,15 @@ export default function ReviewSession({
   };
 
   const currentWord = activeQueue[currentIndex];
+
+  // 包一层 setter：先同步更新 ref（基于当前 ref 值算 next），再 enqueue state
+  // —— 关键：ref 必须在调用瞬间更新，不能放在 setIncorrectQueue 的 updater 内部
+  //    （React 18+ 批处理会推迟 updater 执行，handleAdvance 读到的仍是旧值）
+  const updateIncorrectQueue = (updater: (prev: Word[]) => Word[]) => {
+    const next = updater(incorrectQueueRef.current);
+    incorrectQueueRef.current = next;
+    setIncorrectQueue(next);
+  };
 
   // Auto focus input in spelling mode
   useEffect(() => {
@@ -141,7 +154,7 @@ export default function ReviewSession({
     const wordId = currentWord.id;
 
     if (!remembered) {
-      // Failed on this attempt
+      // 首次作答错误：记入 firstTryFailures
       if (!alreadyReviewedIds.has(wordId)) {
         setFirstTryFailures(prev => {
           const next = new Set(prev);
@@ -149,7 +162,11 @@ export default function ReviewSession({
           return next;
         });
       }
-      setIncorrectQueue(prev => [...prev, currentWord]);
+      // 同一轮内避免重复 push，防止重考队列里出现重复词
+      updateIncorrectQueue(prev => markIncorrect(prev, currentWord));
+    } else {
+      // 答对时若该词在本轮已被标错，从 incorrectQueue 移除（可能上一轮答错、本轮答对）
+      updateIncorrectQueue(prev => markCorrect(prev, wordId));
     }
 
     setAlreadyReviewedIds(prev => {
@@ -185,7 +202,11 @@ export default function ReviewSession({
           return next;
         });
       }
-      setIncorrectQueue(prev => [...prev, currentWord]);
+      // 同一轮内避免重复 push，防止重考队列里出现重复词
+      updateIncorrectQueue(prev => markIncorrect(prev, currentWord));
+    } else {
+      // 答对时若该词在本轮已被标错，从 incorrectQueue 移除（可能上一轮答错、本轮答对）
+      updateIncorrectQueue(prev => markCorrect(prev, wordId));
     }
 
     setAlreadyReviewedIds(prev => {
@@ -204,15 +225,16 @@ export default function ReviewSession({
     if (currentIndex < activeQueue.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      // Round completed! Check if we have incorrect queue to recycle
-      if (incorrectQueue.length > 0) {
-        // Start new round with incorrect words
-        setActiveQueue([...incorrectQueue]);
-        setIncorrectQueue([]);
+      // 本轮走完：读取 ref（同步值），决定是开新一轮还是会话结束
+      const currentIncorrect = incorrectQueueRef.current;
+      if (currentIncorrect.length > 0) {
+        // 用错词队列作为新一轮的 activeQueue
+        setActiveQueue([...currentIncorrect]);
+        updateIncorrectQueue(() => []);
         setCurrentIndex(0);
         setRoundNumber(roundNumber + 1);
       } else {
-        // Session fully finished!
+        // 所有词都答对，会话结束
         setIsSessionFinished(true);
       }
     }
