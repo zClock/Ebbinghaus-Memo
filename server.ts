@@ -25,7 +25,6 @@ import {
   updateWord,
   submitReview,
   resetUserWords,
-  syncUserDataFromCloud,
   getUserLanguageSettings,
   upsertUserLanguageSettings
 } from "./serverDb";
@@ -395,72 +394,6 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// Firebase Federated Login / Register
-app.post("/api/auth/firebase-login", async (req, res) => {
-  const { uid, email, name } = req.body;
-  if (!uid || !email) {
-    return res.status(400).json({ error: "Firebase 登录认证参数不完整。" });
-  }
-
-  const cleanEmail = email.trim().toLowerCase();
-  try {
-    let user = await findUserById(uid);
-    if (!user) {
-      user = await findUserByEmail(cleanEmail);
-    }
-    
-    if (!user) {
-      // Auto-register
-      user = {
-        id: uid,
-        email: cleanEmail,
-        passwordHash: "firebase_auth_federated",
-        name: (name || email.split("@")[0] || "学习者").trim(),
-        dailyGoal: 15,
-        level: "CET4",
-        createdAt: new Date().toISOString()
-      };
-
-      // Copy default words
-      const userDefaultWords = defaultWords.map(w => ({
-        ...w,
-        id: "word_" + Math.random().toString(36).substring(2, 11),
-        userId: user.id,
-        createdAt: new Date().toISOString(),
-        lastResetAt: new Date().toISOString(),
-        nextReviewAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      }));
-      await createUser(user, userDefaultWords);
-    } else {
-      // If user existed with different ID (e.g., registered via email before, now log in via Google), migrate their ID
-      if (user.id !== uid) {
-        const oldId = user.id;
-        user.id = uid;
-        await updateUser(oldId, { name: user.name });
-      }
-      
-      if (name && (!user.name || user.name === "学习者")) {
-        user = await updateUser(user.id, { name: name.trim() });
-      }
-    }
-
-    // Generate session token
-    const token = crypto.randomBytes(32).toString("hex");
-    const session: Session = {
-      token,
-      userId: user.id,
-      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000
-    };
-    await createSession(session);
-
-    const { passwordHash, ...safeUser } = user;
-    res.json({ user: safeUser, token });
-  } catch (err: any) {
-    console.error("Firebase login error:", err);
-    res.status(500).json({ error: "Firebase 登录失败: " + (err.message || err) });
-  }
-});
-
 // Logout
 app.post("/api/auth/logout", async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -522,38 +455,6 @@ app.put("/api/auth/change-password", authMiddleware, async (req: any, res) => {
   } catch (err) {
     console.error("Change password error:", err);
     res.status(500).json({ error: "修改密码失败。" });
-  }
-});
-
-// Sync pull: Restore / sync user data from Firestore to the local db.json
-app.post("/api/sync/pull", authMiddleware, async (req: any, res) => {
-  const { words, histories } = req.body;
-  if (!Array.isArray(words)) {
-    return res.status(400).json({ error: "同步单词数据格式不正确。" });
-  }
-
-  const userId = req.userId;
-  try {
-    // Map and sanitize words
-    const sanitizedWords = words.map(w => ({
-      ...w,
-      userId: userId, // Enforce correct ownership
-      createdAt: w.createdAt || new Date().toISOString(),
-      lastResetAt: w.lastResetAt || new Date().toISOString(),
-      nextReviewAt: w.nextReviewAt || new Date().toISOString()
-    }));
-
-    // Map and sanitize histories
-    const sanitizedHistories = Array.isArray(histories) ? histories.map(h => ({
-      ...h,
-      userId: userId
-    })) : [];
-
-    await syncUserDataFromCloud(userId, sanitizedWords, sanitizedHistories);
-    res.json({ success: true, message: "云端数据已成功拉取并同步到本系统。" });
-  } catch (err: any) {
-    console.error("Sync pull error:", err);
-    res.status(500).json({ error: "同步云端数据出错: " + (err.message || err) });
   }
 });
 
