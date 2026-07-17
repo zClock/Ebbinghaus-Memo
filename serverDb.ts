@@ -164,7 +164,8 @@ function toDbWord(word: any) {
     review_stage: word.reviewStage,
     consecutive_correct: word.consecutiveCorrect,
     last_reset_at: word.lastResetAt,
-    next_review_at: word.nextReviewAt
+    next_review_at: word.nextReviewAt,
+    language: word.language || "English"
   };
 }
 
@@ -184,7 +185,8 @@ function fromDbWord(dbWord: any) {
     reviewStage: dbWord.review_stage ?? 0,
     consecutiveCorrect: dbWord.consecutive_correct ?? 0,
     lastResetAt: dbWord.last_reset_at,
-    nextReviewAt: dbWord.next_review_at
+    nextReviewAt: dbWord.next_review_at,
+    language: dbWord.language || "English"
   };
 }
 
@@ -318,7 +320,22 @@ export async function createUser(user: any, defaultWords: any[]): Promise<void> 
         const { error: wordsErr } = await supabase
           .from("words")
           .insert(dbWords);
-        if (wordsErr) throw wordsErr;
+        if (wordsErr) {
+          if (wordsErr.message && wordsErr.message.includes("language")) {
+            console.warn("[Database] 'language' column missing during createUser, retrying without 'language'...");
+            const dbWordsNoLang = dbWords.map((dw: any) => {
+              const copy = { ...dw };
+              delete copy.language;
+              return copy;
+            });
+            const { error: retryErr } = await supabase
+              .from("words")
+              .insert(dbWordsNoLang);
+            if (retryErr) throw retryErr;
+          } else {
+            throw wordsErr;
+          }
+        }
       }
       return;
     } catch (err) {
@@ -496,16 +513,19 @@ export async function getUserHistories(userId: string): Promise<any[]> {
   return (db.histories || []).filter(h => h.userId === userId).map(h => ({ ...h }));
 }
 
-export async function findWordBySpelling(userId: string, spelling: string): Promise<any | null> {
+export async function findWordBySpelling(userId: string, spelling: string, language?: string): Promise<any | null> {
   const cleanSpelling = spelling.trim().toLowerCase();
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("words")
         .select("*")
         .eq("user_id", userId)
-        .eq("spelling", cleanSpelling)
-        .maybeSingle();
+        .eq("spelling", cleanSpelling);
+      if (language) {
+        query = query.eq("language", language);
+      }
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data ? fromDbWord(data) : null;
     } catch (err) {
@@ -514,19 +534,34 @@ export async function findWordBySpelling(userId: string, spelling: string): Prom
     }
   }
   const db = readLocalDb();
-  const word = db.words.find(w => w.spelling === cleanSpelling && w.userId === userId);
+  const word = db.words.find(w => w.spelling === cleanSpelling && w.userId === userId && (!language || (w.language || "English") === language));
   return word ? { ...word } : null;
 }
 
 export async function createWord(word: any): Promise<any> {
   if (isSupabaseConfigured && supabase) {
     try {
+      const dbWord = toDbWord(word);
       const { data, error } = await supabase
         .from("words")
-        .insert(toDbWord(word))
+        .insert(dbWord)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        if (error.message && error.message.includes("language")) {
+          console.warn("[Database] 'language' column missing during createWord, retrying without 'language'...");
+          const dbWordNoLang = { ...dbWord };
+          delete dbWordNoLang.language;
+          const { data: retryData, error: retryErr } = await supabase
+            .from("words")
+            .insert(dbWordNoLang)
+            .select()
+            .single();
+          if (retryErr) throw retryErr;
+          return fromDbWord(retryData);
+        }
+        throw error;
+      }
       return fromDbWord(data);
     } catch (err) {
       console.error("[Database] Error creating word in Supabase:", err);
@@ -547,7 +582,22 @@ export async function createWordsBatch(words: any[]): Promise<void> {
       const { error } = await supabase
         .from("words")
         .insert(dbWords);
-      if (error) throw error;
+      if (error) {
+        if (error.message && error.message.includes("language")) {
+          console.warn("[Database] 'language' column missing during createWordsBatch, retrying without 'language'...");
+          const dbWordsNoLang = dbWords.map((dw: any) => {
+            const copy = { ...dw };
+            delete copy.language;
+            return copy;
+          });
+          const { error: retryErr } = await supabase
+            .from("words")
+            .insert(dbWordsNoLang);
+          if (retryErr) throw retryErr;
+          return;
+        }
+        throw error;
+      }
       return;
     } catch (err) {
       console.error("[Database] Error batch creating words in Supabase:", err);
@@ -825,5 +875,91 @@ export async function syncUserDataFromCloud(userId: string, words: any[], histor
   db.histories = db.histories.filter(h => h.userId !== userId);
   db.words.push(...words);
   db.histories.push(...histories);
+  writeLocalDb(db);
+}
+
+export async function getUserLanguageSettings(userId: string, language: string): Promise<{ dailyGoal: number, level: string }> {
+  const cleanLang = language || "English";
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("user_language_settings")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("language", cleanLang)
+        .maybeSingle();
+      if (error) {
+        console.error("[Database] Error getting user language settings, falling back:", error);
+      } else if (data) {
+        return {
+          dailyGoal: Number(data.daily_goal),
+          level: data.level
+        };
+      }
+    } catch (err) {
+      console.error("[Database] Exception fetching user language settings, falling back:", err);
+    }
+  }
+
+  // Fallback to local JSON DB
+  const db = readLocalDb();
+  const dbLocal = (db as any).languageSettings || [];
+  const found = dbLocal.find((s: any) => s.userId === userId && s.language === cleanLang);
+  if (found) {
+    return {
+      dailyGoal: Number(found.dailyGoal),
+      level: found.level
+    };
+  }
+
+  // If not found in custom table, fallback to user's global settings
+  const user = await findUserById(userId);
+  if (user) {
+    return {
+      dailyGoal: user.dailyGoal,
+      level: user.level
+    };
+  }
+
+  return {
+    dailyGoal: 15,
+    level: cleanLang === "Japanese" ? "N5" : "CET4"
+  };
+}
+
+export async function upsertUserLanguageSettings(userId: string, language: string, dailyGoal: number, level: string): Promise<void> {
+  const cleanLang = language || "English";
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from("user_language_settings")
+        .upsert({
+          user_id: userId,
+          language: cleanLang,
+          daily_goal: dailyGoal,
+          level: level
+        }, { onConflict: "user_id,language" });
+      if (error) {
+        // Fallback or retry: if table doesn't exist yet, we don't crash
+        console.warn("[Database] Error upserting language settings, table may not exist:", error);
+      } else {
+        return;
+      }
+    } catch (err) {
+      console.warn("[Database] Exception upserting language settings, table may not exist:", err);
+    }
+  }
+
+  // Local JSON fallback
+  const db = readLocalDb();
+  if (!(db as any).languageSettings) {
+    (db as any).languageSettings = [];
+  }
+  const index = (db as any).languageSettings.findIndex((s: any) => s.userId === userId && s.language === cleanLang);
+  if (index !== -1) {
+    (db as any).languageSettings[index] = { userId, language: cleanLang, dailyGoal, level };
+  } else {
+    (db as any).languageSettings.push({ userId, language: cleanLang, dailyGoal, level });
+  }
   writeLocalDb(db);
 }

@@ -1,4 +1,5 @@
-import { BookOpen, Calendar, GraduationCap, LayoutDashboard, RefreshCw, User as UserIcon } from "lucide-react";
+import { BookOpen, Calendar, GraduationCap, LayoutDashboard, RefreshCw, User as UserIcon, Languages, Globe } from "lucide-react";
+import { getTranslation } from "../lib/translations";
 
 interface NavbarProps {
   currentView: "dashboard" | "review" | "library" | "profile";
@@ -9,6 +10,10 @@ interface NavbarProps {
   user: {
     name: string;
   } | null;
+  selectedLanguage: string;
+  setSelectedLanguage: (lang: string) => void;
+  useTargetUi: boolean;
+  setUseTargetUi: (val: boolean) => void;
 }
 
 export default function Navbar({
@@ -18,16 +23,104 @@ export default function Navbar({
   virtualTime,
   onResetTime,
   user,
+  selectedLanguage,
+  setSelectedLanguage,
+  useTargetUi,
+  setUseTargetUi,
 }: NavbarProps) {
+  const t = getTranslation(selectedLanguage, useTargetUi);
+
   const formattedTime = () => {
     if (!virtualTime) return "";
     const date = new Date(virtualTime);
-    return date.toLocaleDateString("zh-CN", {
+    return date.toLocaleDateString(useTargetUi && selectedLanguage !== "All" ? (
+      selectedLanguage === "Japanese" ? "ja-JP" :
+      selectedLanguage === "Spanish" ? "es-ES" :
+      selectedLanguage === "French" ? "fr-FR" :
+      selectedLanguage === "Portuguese" ? "pt-PT" : "en-US"
+    ) : "zh-CN", {
       year: "numeric",
       month: "long",
       day: "numeric",
       weekday: "short",
     });
+  };
+
+  const getLanguageLabel = (lang: string) => {
+    switch (lang) {
+      case "English": return "English";
+      case "Japanese": return "日本語";
+      case "Spanish": return "Español";
+      case "French": return "Français";
+      case "Portuguese": return "Português";
+      default: return "English";
+    }
+  };
+
+  const getLanguageOptionLabel = (langCode: string) => {
+    if (!useTargetUi) {
+      switch (langCode) {
+        case "All": return "全部语言";
+        case "English": return "英语 (EN)";
+        case "Japanese": return "日语 (JA)";
+        case "Spanish": return "西班牙语 (ES)";
+        case "French": return "法语 (FR)";
+        case "Portuguese": return "葡萄牙语 (PT)";
+        default: return langCode;
+      }
+    }
+    const targetLang = selectedLanguage === "All" ? "English" : selectedLanguage;
+    if (targetLang === "Japanese") {
+      switch (langCode) {
+        case "All": return "すべての言語";
+        case "English": return "英語 (EN)";
+        case "Japanese": return "日本語 (JA)";
+        case "Spanish": return "スペイン語 (ES)";
+        case "French": return "フランス語 (FR)";
+        case "Portuguese": return "ポルトガル語 (PT)";
+        default: return langCode;
+      }
+    } else if (targetLang === "Spanish") {
+      switch (langCode) {
+        case "All": return "Todos los idiomas";
+        case "English": return "Inglés (EN)";
+        case "Japanese": return "Japonés (JA)";
+        case "Spanish": return "Español (ES)";
+        case "French": return "Francés (FR)";
+        case "Portuguese": return "Português (PT)";
+        default: return langCode;
+      }
+    } else if (targetLang === "French") {
+      switch (langCode) {
+        case "All": return "Toutes les langues";
+        case "English": return "Anglais (EN)";
+        case "Japanese": return "Japonais (JA)";
+        case "Spanish": return "Espagnol (ES)";
+        case "French": return "Français (FR)";
+        case "Portuguese": return "Portugais (PT)";
+        default: return langCode;
+      }
+    } else if (targetLang === "Portuguese") {
+      switch (langCode) {
+        case "All": return "Todos os idiomas";
+        case "English": return "Inglês (EN)";
+        case "Japanese": return "Japonês (JA)";
+        case "Spanish": return "Espanhol (ES)";
+        case "French": return "Francês (FR)";
+        case "Portuguese": return "Português (PT)";
+        default: return langCode;
+      }
+    } else {
+      switch (langCode) {
+        case "All": return "All Languages";
+        case "English": return "English (EN)";
+        case "Japanese": return "Japanese (JA)";
+        case "Spanish": return "Spanish (ES)";
+        case "French": return "French (FR)";
+        case "Portuguese": return "Portuguese (PT)";
+        default: return langCode;
+      }
+    }
   };
 
   return (
@@ -45,7 +138,9 @@ export default function Navbar({
             </div>
             <div className="hidden min-[420px]:block">
               <span className="font-display font-bold text-base sm:text-lg text-slate-900 tracking-tight block">Ebbinghaus Memo</span>
-              <span className="text-[10px] font-mono text-indigo-600 block -mt-1 font-semibold tracking-wider">智能词库</span>
+              <span className="text-[10px] font-mono text-indigo-600 block -mt-1 font-semibold tracking-wider">
+                {useTargetUi ? "Smart SRS" : "智能词库"}
+              </span>
             </div>
           </div>
 
@@ -61,7 +156,7 @@ export default function Navbar({
               }`}
             >
               <LayoutDashboard className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">控制面板</span>
+              <span className="hidden sm:inline">{t.dashboard}</span>
             </button>
 
             <button
@@ -74,8 +169,7 @@ export default function Navbar({
               }`}
             >
               <BookOpen className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">今日复习</span>
-              <span className="hidden min-[480px]:inline sm:hidden">复习</span>
+              <span className="hidden sm:inline">{t.review}</span>
               {dueCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-white animate-pulse">
                   {dueCount}
@@ -93,8 +187,7 @@ export default function Navbar({
               }`}
             >
               <GraduationCap className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">艾宾词库</span>
-              <span className="hidden min-[480px]:inline sm:hidden">词库</span>
+              <span className="hidden sm:inline">{t.library}</span>
             </button>
 
             {user && (
@@ -113,20 +206,56 @@ export default function Navbar({
             )}
           </nav>
 
-          {/* Virtual Time Clock with Reset */}
-          <div className="hidden md:flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-1.5 border border-slate-100 shrink-0">
-            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-            <div className="text-right">
-              <span className="text-xs font-semibold text-slate-700 block sm:inline">{formattedTime()}</span>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* UI Display Language Selector */}
+            <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 sm:px-2.5 text-xs">
+              <Globe className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <select
+                value={useTargetUi ? "target" : "zh"}
+                onChange={(e) => setUseTargetUi(e.target.value === "target")}
+                className="bg-transparent font-medium text-slate-700 outline-none border-none pr-1 cursor-pointer focus:ring-0 text-[11px] sm:text-xs"
+                id="select-ui-lang"
+              >
+                <option value="zh">中文</option>
+                <option value="target">
+                  {selectedLanguage === "All" ? "English" : getLanguageLabel(selectedLanguage)}
+                </option>
+              </select>
             </div>
-            <button
-              onClick={onResetTime}
-              title="重置时间为今天"
-              className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
-              id="btn-reset-time"
-            >
-              <RefreshCw className="w-3 h-3" />
-            </button>
+
+            {/* Target Learning Language Selector */}
+            <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 sm:px-2.5 text-xs">
+              <Languages className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value)}
+                className="bg-transparent font-medium text-slate-700 outline-none border-none pr-1 cursor-pointer focus:ring-0 text-[11px] sm:text-xs"
+                id="select-language"
+              >
+                <option value="All">{getLanguageOptionLabel("All")}</option>
+                <option value="English">{getLanguageOptionLabel("English")}</option>
+                <option value="Japanese">{getLanguageOptionLabel("Japanese")}</option>
+                <option value="Spanish">{getLanguageOptionLabel("Spanish")}</option>
+                <option value="French">{getLanguageOptionLabel("French")}</option>
+                <option value="Portuguese">{getLanguageOptionLabel("Portuguese")}</option>
+              </select>
+            </div>
+
+            {/* Virtual Time Clock with Reset */}
+            <div className="hidden md:flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-1.5 border border-slate-100 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+              <div className="text-right">
+                <span className="text-xs font-semibold text-slate-700 block sm:inline">{formattedTime()}</span>
+              </div>
+              <button
+                onClick={onResetTime}
+                title={t.resetToToday}
+                className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                id="btn-reset-time"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

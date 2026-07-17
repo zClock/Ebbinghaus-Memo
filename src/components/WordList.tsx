@@ -20,6 +20,7 @@ import {
   BarChart3
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
+import { getTranslation } from "../lib/translations";
 
 interface Word {
   id: string;
@@ -48,6 +49,8 @@ interface WordListProps {
     addedWords: string[];
     errors: { spelling: string; error: string }[];
   }>;
+  selectedLanguage: string;
+  useTargetUi: boolean;
 }
 
 export default function WordList({
@@ -57,7 +60,11 @@ export default function WordList({
   onUpdateWord,
   onRegenerateWord,
   onImportWords,
+  selectedLanguage,
+  useTargetUi,
 }: WordListProps) {
+  const t = getTranslation(selectedLanguage, useTargetUi);
+
   const [newSpelling, setNewSpelling] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -82,7 +89,7 @@ export default function WordList({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "due" | "mastered" | "learning">("all");
   const [stageFilter, setStageFilter] = useState<string>("all"); // "all", "0", "1", "2", "3", "4", "5", "6"
-  const [sortBy, setSortBy] = useState<string>("newest"); // "newest", "oldest", "nextReviewAsc", "nextReviewDesc", "spellingAsc", "spellingDesc", "stageAsc", "stageDesc"
+  const [sortBy, setSortBy] = useState<string>("newest"); // "newest", "oldest", "nextReviewAsc", ...
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15); // Items per page
 
@@ -116,7 +123,11 @@ export default function WordList({
   const speakFallback = (text: string) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
+      if (selectedLanguage === "Japanese") utterance.lang = 'ja-JP';
+      else if (selectedLanguage === "Spanish") utterance.lang = 'es-ES';
+      else if (selectedLanguage === "French") utterance.lang = 'fr-FR';
+      else if (selectedLanguage === "Portuguese") utterance.lang = 'pt-PT';
+      else utterance.lang = 'en-US';
       utterance.rate = 0.9;
       window.speechSynthesis.speak(utterance);
     }
@@ -133,30 +144,32 @@ export default function WordList({
     try {
       const success = await onAddWord(newSpelling);
       if (success) {
-        setSuccessMsg(`成功录入单词 "${newSpelling.trim().toLowerCase()}"！系统已智能匹配音标、翻译与记忆联想。`);
+        setSuccessMsg(
+          t.addSuccessMsg.replace("{word}", newSpelling.trim().toLowerCase())
+        );
         setNewSpelling("");
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
-        setErrorMsg("录入失败：该单词可能已在词库中，或无法联网获取解析。");
+        setErrorMsg(t.addFailMsg);
       }
     } catch (err) {
-      setErrorMsg("发生意外错误。");
+      setErrorMsg(useTargetUi ? "An unexpected error occurred." : "发生意外错误。");
     } finally {
       setIsAdding(false);
     }
   };
 
-  // Helper to parse text into clean English word/phrase strings
+  // Helper to parse text into clean word/phrase strings supporting Unicode
   const parseWords = (text: string): string[] => {
     return text
       .split(/[\n,;，；\s]+/)
-      .map(w => w.replace(/[^a-zA-Z\s-]/g, "").trim()) // clean up punctuation except hyphens/spaces
+      .map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\\_`~()?"“”']/g, "").trim())
       .filter(w => w.length > 0);
   };
 
   const readAndSetFile = (file: File) => {
     if (file.type !== "text/plain" && !file.name.endsWith(".txt")) {
-      setImportError("只支持导入 .txt 文本文件");
+      setImportError(useTargetUi ? "Only .txt text files are supported" : "只支持导入 .txt 文本文件");
       return;
     }
     const reader = new FileReader();
@@ -169,7 +182,7 @@ export default function WordList({
       }
     };
     reader.onerror = () => {
-      setImportError("读取文件失败");
+      setImportError(useTargetUi ? "Failed to read file" : "读取文件失败");
     };
     reader.readAsText(file);
   };
@@ -202,7 +215,7 @@ export default function WordList({
     e.preventDefault();
     const parsed = parseWords(batchText);
     if (parsed.length === 0) {
-      setImportError("没有识别到任何有效的英文单词，请检查输入或TXT内容。");
+      setImportError(useTargetUi ? "No valid words recognized. Please check input or TXT content." : "没有识别到任何有效的英文单词，请检查输入或TXT内容。");
       return;
     }
 
@@ -218,10 +231,10 @@ export default function WordList({
           setBatchText(""); // Clear on success
         }
       } else {
-        setImportError("导入接口不可用");
+        setImportError(useTargetUi ? "Import interface unavailable" : "导入接口不可用");
       }
     } catch (err: any) {
-      setImportError(err.message || "导入过程中发生错误。");
+      setImportError(err.message || (useTargetUi ? "An error occurred during import." : "导入过程中发生错误。"));
     } finally {
       setIsImporting(false);
     }
@@ -255,12 +268,11 @@ export default function WordList({
       setEditExampleTrans(updatedWord.exampleTranslation || "");
       setEditMnemonic(updatedWord.mnemonic || "");
       
-      setRegenSuccess("AI 智能润色成功！已重构并升级释义、例句与记忆窍门 ✨");
-      // Clear success notification after some time
+      setRegenSuccess(t.regenSuccessMsg);
       setTimeout(() => setRegenSuccess(""), 5000);
     } catch (err: any) {
       console.error(err);
-      setRegenError(err.message || "AI 重新润色失败，请稍后重试。");
+      setRegenError(err.message || (useTargetUi ? "AI re-polish failed. Please try again." : "AI 重新润色失败，请稍后重试。"));
     } finally {
       setIsRegenerating(false);
     }
@@ -304,7 +316,6 @@ export default function WordList({
       return w.reviewStage >= 5 || w.consecutiveCorrect >= 3;
     }
     if (filterMode === "learning") {
-      // Stage is between 1 and 4, not yet mastered
       return w.reviewStage > 0 && w.reviewStage < 5 && w.consecutiveCorrect < 3;
     }
     return true;
@@ -356,17 +367,17 @@ export default function WordList({
   };
 
   const getNextReviewTimeDisplay = (word: Word) => {
-    if (word.reviewStage >= 6) return "已完全掌握";
+    if (word.reviewStage >= 6) return t.fullyMastered;
     const dueTime = new Date(word.nextReviewAt).getTime();
     const nowTime = Date.now();
     const diffHours = (dueTime - nowTime) / (1000 * 60 * 60);
 
     if (diffHours <= 0) {
-      return "待复习 (已到期)";
+      return t.dueReady;
     } else if (diffHours < 24) {
-      return `约 ${Math.round(diffHours)} 小时后复习`;
+      return t.inHours.replace("{hours}", String(Math.round(diffHours)));
     } else {
-      return `${Math.round(diffHours / 24)} 天后复习`;
+      return t.inDays.replace("{days}", String(Math.round(diffHours / 24)));
     }
   };
 
@@ -378,7 +389,49 @@ export default function WordList({
   
   const stageCounts = Array.from({ length: 7 }, (_, stageNum) => {
     const count = words.filter(w => w.reviewStage === stageNum).length;
-    const labels = [
+    const labels = useTargetUi ? (
+      selectedLanguage === "Japanese" ? [
+        "ステージ 0",
+        "ステージ 1 (20分)",
+        "ステージ 2 (1時間)",
+        "ステージ 3 (12時間)",
+        "ステージ 4 (1日)",
+        "ステージ 5 (2日)",
+        "ステージ 6 (習得)"
+      ] : selectedLanguage === "Spanish" ? [
+        "Fase 0",
+        "Fase 1 (20m)",
+        "Fase 2 (1h)",
+        "Fase 3 (12h)",
+        "Fase 4 (1d)",
+        "Fase 5 (2d)",
+        "Fase 6 (Dominio)"
+      ] : selectedLanguage === "French" ? [
+        "Étape 0",
+        "Étape 1 (20m)",
+        "Étape 2 (1h)",
+        "Étape 3 (12h)",
+        "Étape 4 (1j)",
+        "Étape 5 (2j)",
+        "Étape 6 (Maîtrisé)"
+      ] : selectedLanguage === "Portuguese" ? [
+        "Estágio 0",
+        "Estágio 1 (20m)",
+        "Estágio 2 (1h)",
+        "Estágio 3 (12h)",
+        "Estágio 4 (1d)",
+        "Estágio 5 (2d)",
+        "Estágio 6 (Dominado)"
+      ] : [
+        "Stage 0 (New)",
+        "Stage 1 (20m)",
+        "Stage 2 (1h)",
+        "Stage 3 (12h)",
+        "Stage 4 (1d)",
+        "Stage 5 (2d)",
+        "Stage 6 (Mastered)"
+      ]
+    ) : [
       "阶段0 (新词)",
       "阶段1 (20m)",
       "阶段2 (1h)",
@@ -388,7 +441,7 @@ export default function WordList({
       "阶段6 (掌握)"
     ];
     return {
-      name: labels[stageNum] || `阶段 ${stageNum}`,
+      name: labels[stageNum] || `Stage ${stageNum}`,
       stage: stageNum,
       count: count,
     };
@@ -417,13 +470,19 @@ export default function WordList({
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-display font-bold text-slate-900 text-lg">记忆曲线与词库分布</h3>
-              <p className="text-xs text-slate-400 mt-0.5">实时跟踪您的艾宾浩斯记忆阶段与词汇掌握情况</p>
+              <h3 className="font-display font-bold text-slate-900 text-lg">
+                {t.wordListChartTitle}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {t.wordListChartDesc}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <span className="text-xs text-slate-400 block font-medium">综合掌握率</span>
+              <span className="text-xs text-slate-400 block font-medium">
+                {t.overallMasteryRate}
+              </span>
               <span className="text-sm font-bold text-emerald-600 font-mono">{masteryRate}%</span>
             </div>
             <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -440,7 +499,9 @@ export default function WordList({
           <div className="grid grid-cols-2 lg:grid-cols-1 lg:col-span-3 gap-3">
             <div className="p-4 bg-slate-50/50 border border-slate-100/80 rounded-2xl hover:bg-slate-50 transition-all">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-slate-400">词库总量</span>
+                <span className="text-xs font-semibold text-slate-400">
+                  {t.libraryVolume}
+                </span>
                 <span className="text-[10px] bg-slate-200/50 text-slate-600 font-bold px-2 py-0.5 rounded-full font-mono">Total</span>
               </div>
               <p className="text-2xl font-bold text-slate-800 mt-1 font-mono">{totalCount}</p>
@@ -448,7 +509,9 @@ export default function WordList({
 
             <div className="p-4 bg-rose-50/40 border border-rose-100/50 rounded-2xl hover:bg-rose-50/60 transition-all">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-rose-500">到期复习</span>
+                <span className="text-xs font-semibold text-rose-500">
+                  {t.dueReview}
+                </span>
                 <span className="text-[10px] bg-rose-100/50 text-rose-600 font-bold px-2 py-0.5 rounded-full font-mono">Due</span>
               </div>
               <p className="text-2xl font-bold text-rose-600 mt-1 font-mono">{dueCount}</p>
@@ -456,7 +519,9 @@ export default function WordList({
 
             <div className="p-4 bg-indigo-50/40 border border-indigo-100/50 rounded-2xl hover:bg-indigo-50/60 transition-all">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-indigo-500">复习中</span>
+                <span className="text-xs font-semibold text-indigo-500">
+                  {t.inProgress}
+                </span>
                 <span className="text-[10px] bg-indigo-100/50 text-indigo-600 font-bold px-2 py-0.5 rounded-full font-mono">Active</span>
               </div>
               <p className="text-2xl font-bold text-indigo-600 mt-1 font-mono">{learningCount}</p>
@@ -464,7 +529,9 @@ export default function WordList({
 
             <div className="p-4 bg-emerald-50/40 border border-emerald-100/50 rounded-2xl hover:bg-emerald-50/60 transition-all">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-emerald-600">完全掌握</span>
+                <span className="text-xs font-semibold text-emerald-600">
+                  {t.fullyMastered}
+                </span>
                 <span className="text-[10px] bg-emerald-100/50 text-emerald-600 font-bold px-2 py-0.5 rounded-full font-mono">Mastered</span>
               </div>
               <p className="text-2xl font-bold text-emerald-600 mt-1 font-mono">{masteredCount}</p>
@@ -476,9 +543,11 @@ export default function WordList({
             {totalCount === 0 ? (
               <div className="h-[220px] flex flex-col items-center justify-center border border-dashed border-slate-200 bg-slate-50/30 rounded-2xl p-6 text-center">
                 <BookOpen className="w-8 h-8 text-slate-300 mb-2.5 animate-pulse" />
-                <h4 className="text-xs font-bold text-slate-500">暂无单词数据</h4>
+                <h4 className="text-xs font-bold text-slate-500">
+                  {t.noWordData}
+                </h4>
                 <p className="text-[11px] text-slate-400 mt-1 max-w-xs leading-relaxed">
-                  在下方录入首个单词，系统将自动开始计算艾宾浩斯复习周期并在此生成阶段分布图
+                  {t.noWordDataDesc}
                 </p>
               </div>
             ) : (
@@ -509,7 +578,10 @@ export default function WordList({
                         }}
                         labelStyle={{ fontWeight: "bold", color: "#1e293b", marginBottom: "4px" }}
                         cursor={{ fill: "#f8fafc", radius: 8 }}
-                        formatter={(value: any) => [`${value} 个单词`, "当前数量"]}
+                        formatter={(value: any) => [
+                          `${value} ${t.wordsCount}`, 
+                          t.stageCountLabel
+                        ]}
                       />
                       <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={32}>
                         {stageCounts.map((entry, index) => (
@@ -548,8 +620,6 @@ export default function WordList({
             <button
               onClick={() => {
                 setAddMode("single");
-                setImportResult(null);
-                setImportError("");
                 setErrorMsg("");
                 setSuccessMsg("");
               }}
@@ -560,13 +630,11 @@ export default function WordList({
               }`}
             >
               <Plus className="w-4 h-4" />
-              <span>单个录入</span>
+              <span>{t.singleEntry}</span>
             </button>
             <button
               onClick={() => {
                 setAddMode("batch");
-                setImportResult(null);
-                setImportError("");
                 setErrorMsg("");
                 setSuccessMsg("");
               }}
@@ -577,7 +645,7 @@ export default function WordList({
               }`}
             >
               <Upload className="w-4 h-4" />
-              <span>批量导入</span>
+              <span>{t.batchImport}</span>
             </button>
           </div>
 
@@ -585,21 +653,25 @@ export default function WordList({
             <div className="space-y-4 animate-fade-in">
               <div className="flex items-center gap-2 mb-1">
                 <Plus className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-display font-bold text-slate-900 text-lg">录入新单词</h3>
+                <h3 className="font-display font-bold text-slate-900 text-lg">
+                  {t.addSingleTitle}
+                </h3>
               </div>
               
               <p className="text-xs text-slate-400 font-light leading-relaxed mb-2">
-                输入任何英文单词或词组。系统将自动向<b>词典接口</b>发送解析请求。如果检测到 AI 密钥，还会智能补充<b>音标、中文释释、语境例句以及艾宾浩斯记忆联想</b>！
+                {t.addSingleDesc}
               </p>
 
               <form onSubmit={handleAddSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">英文单词</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    {t.inputWordLabel}
+                  </label>
                   <div className="flex gap-2">
                     <input
                       id="input-add-spelling"
                       type="text"
-                      placeholder="例如: ephemeral"
+                      placeholder={useTargetUi ? "e.g., ephemeral" : "例如: ephemeral"}
                       value={newSpelling}
                       onChange={(e) => setNewSpelling(e.target.value)}
                       disabled={isAdding}
@@ -614,7 +686,7 @@ export default function WordList({
                       {isAdding ? (
                         <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                       ) : (
-                        "录入"
+                        t.addBtnText
                       )}
                     </button>
                   </div>
@@ -640,11 +712,13 @@ export default function WordList({
             <div className="space-y-4 animate-fade-in">
               <div className="flex items-center gap-2 mb-1">
                 <Upload className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-display font-bold text-slate-900 text-lg">批量导入单词</h3>
+                <h3 className="font-display font-bold text-slate-900 text-lg">
+                  {t.batchImportTitle}
+                </h3>
               </div>
               
               <p className="text-xs text-slate-400 font-light leading-relaxed mb-2">
-                可以在文本框直接粘贴多个英文单词（逗号或空格隔开，亦可一行一个），或直接拖入 <b>.txt 文本文件</b> 自动解析读取！
+                {t.batchImportDesc}
               </p>
 
               {/* Drag and Drop Zone */}
@@ -667,8 +741,12 @@ export default function WordList({
                   onChange={handleFileChange}
                 />
                 <FileText className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <span className="text-xs font-semibold text-slate-600 block">点击或将 TXT 文件拖拽至此导入</span>
-                <span className="text-[10px] text-slate-400 font-light block mt-1">支持纯文本文件 / 自动清洗提取</span>
+                <span className="text-xs font-semibold text-slate-600 block">
+                  {t.dragTxtLabel}
+                </span>
+                <span className="text-[10px] text-slate-400 font-light block mt-1">
+                  {t.dragTxtSublabel}
+                </span>
               </div>
 
               {/* Textarea for previewing / copy-pasting */}
@@ -676,16 +754,16 @@ export default function WordList({
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      编辑或粘贴单词文本
+                      {t.batchInputTextLabel}
                     </label>
                     {batchText.trim() && (
                       <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-mono">
-                        已识别 {parseWords(batchText).length} 个
+                        {t.detectedCountLabel.replace("{count}", String(parseWords(batchText).length))}
                       </span>
                     )}
                   </div>
                   <textarea
-                    placeholder="例：&#10;ephemeral&#10;lucid, serendipity&#10;conspicuous"
+                    placeholder={useTargetUi ? "e.g.,\nephemeral\nlucid, serendipity" : "例：\nephemeral\nlucid, serendipity"}
                     value={batchText}
                     onChange={(e) => setBatchText(e.target.value)}
                     disabled={isImporting}
@@ -702,17 +780,16 @@ export default function WordList({
                   {isImporting ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      <span>正在智能解析与导入词库... (单次最多30词)</span>
+                      <span>{t.parsingLabel}</span>
                     </>
                   ) : (
                     <>
-                      <span>确认并开始导入</span>
+                      <span>{t.batchStartImportBtn}</span>
                     </>
                   )}
                 </button>
               </form>
 
-              {/* Import status block */}
               {importError && (
                 <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-600 flex items-start gap-1.5 leading-relaxed">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
@@ -725,10 +802,12 @@ export default function WordList({
                   <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 flex items-start gap-1.5 leading-relaxed">
                     <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
                     <div>
-                      <p className="font-semibold">成功导入 {importResult.successCount} 个单词！</p>
+                      <p className="font-semibold">
+                        {t.batchImportSuccessTip.replace("{count}", String(importResult.successCount))}
+                      </p>
                       {importResult.addedWords.length > 0 && (
                         <p className="text-[10px] text-emerald-600 mt-1 font-mono break-all leading-relaxed">
-                          已添加：{importResult.addedWords.join(", ")}
+                          {t.batchAddedWordsLabel} {importResult.addedWords.join(", ")}
                         </p>
                       )}
                     </div>
@@ -738,7 +817,9 @@ export default function WordList({
                     <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 flex items-start gap-1.5 leading-relaxed">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                       <div>
-                        <p className="font-semibold">跳过或失败 {importResult.errors.length} 个单词：</p>
+                        <p className="font-semibold">
+                          {t.batchSkippedWordsLabel.replace("{count}", String(importResult.errors.length))}
+                        </p>
                         <ul className="text-[10px] text-amber-600 list-disc list-inside mt-1 font-mono space-y-0.5">
                           {importResult.errors.slice(0, 4).map((e, idx) => (
                             <li key={idx} className="truncate max-w-[260px]">
@@ -746,7 +827,9 @@ export default function WordList({
                             </li>
                           ))}
                           {importResult.errors.length > 4 && (
-                            <li>以及其余 {importResult.errors.length - 4} 个单词...</li>
+                            <li>
+                              {t.batchSkippedOthers.replace("{count}", String(importResult.errors.length - 4))}
+                            </li>
                           )}
                         </ul>
                       </div>
@@ -761,9 +844,11 @@ export default function WordList({
           <div className="mt-5 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/30 flex gap-3 items-start">
             <BookOpen className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-xs font-semibold text-slate-800">首个周期即刻生成</h4>
+              <h4 className="text-xs font-semibold text-slate-800">
+                {t.immediateCycleTitle}
+              </h4>
               <p className="text-[11px] text-slate-500 font-light mt-0.5 leading-relaxed">
-                新词录入后，系统默认置于“阶段 0”，预设下次复习在 24 小时后。今天您可以安心录入，明天他们就会精准按时出现在您的“复习列表”中！
+                {t.immediateCycleDesc}
               </p>
             </div>
           </div>
@@ -775,12 +860,14 @@ export default function WordList({
           <div className="flex flex-col gap-4 mb-5 pb-5 border-b border-slate-100">
             <div className="flex flex-col lg:flex-row gap-4 justify-between lg:items-center">
               <div>
-                <h3 className="font-display font-bold text-slate-900 text-lg">我的艾宾词库</h3>
+                <h3 className="font-display font-bold text-slate-900 text-lg">
+                  {t.ebbinghausVocabularyTitle}
+                </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  累计词库: <span className="font-semibold text-indigo-600 font-mono">{words.length}</span> 个
+                  {t.cumulativeLibraryLabel} <span className="font-semibold text-indigo-600 font-mono">{words.length}</span> {t.wordsCount}
                   {filteredWords.length !== words.length && (
                     <>
-                      {" | "}过滤结果: <span className="font-semibold text-amber-600 font-mono">{filteredWords.length}</span> 个
+                      {" | "} {t.filteredResultsLabel} <span className="font-semibold text-amber-600 font-mono">{filteredWords.length}</span> {t.wordsCount}
                     </>
                   )}
                 </p>
@@ -794,7 +881,7 @@ export default function WordList({
                     filterMode === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  全部 ({words.length})
+                  {t.filterTabAll} ({words.length})
                 </button>
                 <button
                   id="btn-filter-due"
@@ -803,7 +890,7 @@ export default function WordList({
                     filterMode === "due" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  待复习 ({words.filter(w => new Date(w.nextReviewAt).getTime() <= Date.now() && w.reviewStage < 6).length})
+                  {t.filterTabDue} ({words.filter(w => new Date(w.nextReviewAt).getTime() <= Date.now() && w.reviewStage < 6).length})
                 </button>
                 <button
                   onClick={() => setFilterMode("learning")}
@@ -811,7 +898,7 @@ export default function WordList({
                     filterMode === "learning" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  复习中 ({words.filter(w => w.reviewStage > 0 && w.reviewStage < 5 && w.consecutiveCorrect < 3).length})
+                  {t.filterTabActive} ({words.filter(w => w.reviewStage > 0 && w.reviewStage < 5 && w.consecutiveCorrect < 3).length})
                 </button>
                 <button
                   onClick={() => setFilterMode("mastered")}
@@ -819,7 +906,7 @@ export default function WordList({
                     filterMode === "mastered" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  已掌握 ({words.filter(w => w.reviewStage >= 5 || w.consecutiveCorrect >= 3).length})
+                  {t.filterTabMastered} ({words.filter(w => w.reviewStage >= 5 || w.consecutiveCorrect >= 3).length})
                 </button>
               </div>
             </div>
@@ -829,60 +916,60 @@ export default function WordList({
               {/* Stage filter dropdown */}
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  过滤记忆阶段
+                  {t.filterLearningStage}
                 </label>
                 <select
                   value={stageFilter}
                   onChange={(e) => setStageFilter(e.target.value)}
                   className="w-full text-xs bg-white border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                 >
-                  <option value="all">🔍 全部阶段</option>
-                  <option value="0">阶段 0 (新生词/未开始)</option>
-                  <option value="1">阶段 1 (复习1次 / 20分后)</option>
-                  <option value="2">阶段 2 (复习2次 / 1时后)</option>
-                  <option value="3">阶段 3 (复习3次 / 12时后)</option>
-                  <option value="4">阶段 4 (复习4次 / 1天后)</option>
-                  <option value="5">阶段 5 (复习5次 / 2天后)</option>
-                  <option value="6">阶段 6 (完全掌握)</option>
+                  <option value="all">🔍 {t.filterStageAll}</option>
+                  <option value="0">{t.filterStage0}</option>
+                  <option value="1">{t.filterStage1}</option>
+                  <option value="2">{t.filterStage2}</option>
+                  <option value="3">{t.filterStage3}</option>
+                  <option value="4">{t.filterStage4}</option>
+                  <option value="5">{t.filterStage5}</option>
+                  <option value="6">{t.filterStage6}</option>
                 </select>
               </div>
 
               {/* Sort By selector */}
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  词库排列顺序
+                  {t.sortingOrderLabel}
                 </label>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                   className="w-full text-xs bg-white border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                 >
-                  <option value="newest">🕒 录入时间: 从新到旧</option>
-                  <option value="oldest">🕒 录入时间: 从旧到新</option>
-                  <option value="nextReviewAsc">⏳ 复习时间: 待复习优先</option>
-                  <option value="nextReviewDesc">⏳ 复习时间: 晚复习优先</option>
-                  <option value="spellingAsc">🔤 字母排序: A 至 Z</option>
-                  <option value="spellingDesc">🔤 字母排序: Z 至 A</option>
-                  <option value="stageAsc">📈 记忆阶段: 从低到高</option>
-                  <option value="stageDesc">📉 记忆阶段: 从高到低</option>
+                  <option value="newest">🕒 {t.sortNewest}</option>
+                  <option value="oldest">🕒 {t.sortOldest}</option>
+                  <option value="nextReviewAsc">⏳ {t.sortReviewDue}</option>
+                  <option value="nextReviewDesc">⏳ {t.sortReviewLater}</option>
+                  <option value="spellingAsc">🔤 {t.sortSpellingAsc}</option>
+                  <option value="spellingDesc">🔤 {t.sortSpellingDesc}</option>
+                  <option value="stageAsc">📈 {t.sortStageAsc}</option>
+                  <option value="stageDesc">📉 {t.sortStageDesc}</option>
                 </select>
               </div>
 
               {/* Items Per Page */}
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  每页显示词数
+                  {t.wordsPerPageLabel}
                 </label>
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                   className="w-full text-xs bg-white border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                 >
-                  <option value={10}>📄 10 个 / 页</option>
-                  <option value={15}>📄 15 个 / 页</option>
-                  <option value={20}>📄 20 个 / 页</option>
-                  <option value={30}>📄 30 个 / 页</option>
-                  <option value={50}>📄 50 个 / 页</option>
+                  <option value={10}>📄 10 {t.wordsPerPageSuffix}</option>
+                  <option value={15}>📄 15 {t.wordsPerPageSuffix}</option>
+                  <option value={20}>📄 20 {t.wordsPerPageSuffix}</option>
+                  <option value={30}>📄 30 {t.wordsPerPageSuffix}</option>
+                  <option value={50}>📄 50 {t.wordsPerPageSuffix}</option>
                 </select>
               </div>
             </div>
@@ -893,7 +980,7 @@ export default function WordList({
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
             <input
               type="text"
-              placeholder="搜索拼写、中文释义、例句或助记窍门..."
+              placeholder={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-sm placeholder:text-slate-400 text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
@@ -902,7 +989,7 @@ export default function WordList({
               <button
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-3 p-0.5 rounded-full text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 transition-all cursor-pointer"
-                title="清除搜索"
+                title={t.clearSearchTitle}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -934,12 +1021,12 @@ export default function WordList({
 
                         {isMastered && (
                           <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full">
-                            已掌握
+                            {t.filterTabMastered}
                           </span>
                         )}
                         {isDue && (
                           <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-full animate-pulse">
-                            今日待复习
+                            {t.dueTodayCard}
                           </span>
                         )}
                       </div>
@@ -952,7 +1039,7 @@ export default function WordList({
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
                         <span className={`inline-block px-2.5 py-0.5 border text-[10px] font-bold rounded-full ${getStageColor(word.reviewStage)}`}>
-                          阶段 {word.reviewStage}
+                          {t.stageLabel.replace("{stage}", String(word.reviewStage))}
                         </span>
                         <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
                           {getNextReviewTimeDisplay(word)}
@@ -965,8 +1052,12 @@ export default function WordList({
             ) : (
               <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                 <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm font-medium text-slate-400">词库内没有找到匹配词汇</p>
-                <p className="text-xs text-slate-400 mt-1">请尝试更换筛选条件、搜索关键词或录入新词</p>
+                <p className="text-sm font-medium text-slate-400">
+                  {t.noMatchingWords}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {t.noMatchingWordsDesc}
+                </p>
               </div>
             )}
           </div>
@@ -975,11 +1066,11 @@ export default function WordList({
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between pt-4 mt-4 border-t border-slate-100 gap-3">
               <span className="text-xs text-slate-400 font-medium">
-                显示第 <span className="font-semibold text-slate-700 font-mono">{(activePage - 1) * pageSize + 1}</span> 到{" "}
-                <span className="font-semibold text-slate-700 font-mono">
-                  {Math.min(activePage * pageSize, totalItems)}
-                </span>{" "}
-                个，共 <span className="font-semibold text-indigo-600 font-mono">{totalItems}</span> 个词汇
+                {t.paginationInfo
+                  .replace("{start}", String((activePage - 1) * pageSize + 1))
+                  .replace("{end}", String(Math.min(activePage * pageSize, totalItems)))
+                  .replace("{total}", String(totalItems))
+                }
               </span>
 
               <div className="flex items-center gap-1.5">
@@ -987,7 +1078,7 @@ export default function WordList({
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={activePage === 1}
                   className="p-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-slate-100 disabled:text-slate-300 transition-all cursor-pointer"
-                  title="上一页"
+                  title={t.prevPageTitle}
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -1030,7 +1121,7 @@ export default function WordList({
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={activePage === totalPages}
                   className="p-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:border-slate-100 disabled:text-slate-300 transition-all cursor-pointer"
-                  title="下一页"
+                  title={t.nextPageTitle}
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -1055,7 +1146,7 @@ export default function WordList({
                   </h2>
                   <button
                     onClick={() => playSound(selectedWord)}
-                    title="播放发音"
+                    title={t.listenPronunciation}
                     className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all cursor-pointer"
                   >
                     <Volume2 className="w-4 h-4" />
@@ -1090,7 +1181,7 @@ export default function WordList({
               {/* AI Regen Success/Error indicators */}
               {regenSuccess && (
                 <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs px-4 py-3 rounded-2xl flex items-center gap-2 animate-bounce">
-                  <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <Sparkles className="w-4 h-4 text-emerald-500 shrink-0 animate-pulse" />
                   <span>{regenSuccess}</span>
                 </div>
               )}
@@ -1103,7 +1194,9 @@ export default function WordList({
 
               {/* Definition */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">中文释义</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {t.definitionLabel}
+                </label>
                 {isEditing ? (
                   <textarea
                     rows={2}
@@ -1120,19 +1213,21 @@ export default function WordList({
 
               {/* Example sentence */}
               <div className="space-y-1.5 border-t border-slate-50 pt-4">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">双语例句</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {t.exampleBilingualLabel}
+                </label>
                 {isEditing ? (
                   <div className="space-y-2">
                     <textarea
                       rows={2}
-                      placeholder="英文例句"
+                      placeholder={useTargetUi ? "Context Example Sentence" : "英文例句"}
                       value={editExample}
                       onChange={(e) => setEditExample(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-700 focus:outline-none focus:bg-white"
                     />
                     <textarea
                       rows={2}
-                      placeholder="例句中文翻译"
+                      placeholder={useTargetUi ? "Translation" : "例句翻译"}
                       value={editExampleTrans}
                       onChange={(e) => setEditExampleTrans(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:bg-white"
@@ -1154,7 +1249,7 @@ export default function WordList({
               <div className="space-y-1.5 border-t border-slate-50 pt-4">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
-                  艾宾记忆联想 / 助记窍门
+                  {t.ebbinghausMnemonic}
                 </label>
                 {isEditing ? (
                   <textarea
@@ -1165,7 +1260,7 @@ export default function WordList({
                   />
                 ) : (
                   <p className="text-xs text-slate-600 bg-amber-50/30 border border-amber-100/50 p-4 rounded-2xl leading-relaxed">
-                    {selectedWord.mnemonic || "暂无智能助记方案。输入联想来加强脑部皮层和词根的神经关联吧！"}
+                    {selectedWord.mnemonic || t.noMnemonicLabel}
                   </p>
                 )}
               </div>
@@ -1173,23 +1268,33 @@ export default function WordList({
               {/* Ebbinghaus Parameters Details */}
               <div className="border-t border-slate-100 pt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">复习阶段</span>
-                  <span className="text-sm font-semibold text-slate-700 font-mono">阶段 {selectedWord.reviewStage}</span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">连胜纪录</span>
-                  <span className="text-sm font-semibold text-slate-700 font-mono">{selectedWord.consecutiveCorrect} / 3</span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">上期基准</span>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                    {t.learningStageLabel}
+                  </span>
                   <span className="text-sm font-semibold text-slate-700 font-mono">
-                    {new Date(selectedWord.lastResetAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
+                    {t.stageLabel.replace("{stage}", String(selectedWord.reviewStage))}
                   </span>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">下期预排</span>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                    {t.streakRecordLabel}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-700 font-mono">{selectedWord.consecutiveCorrect} / 3</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                    {t.baselineLabel}
+                  </span>
                   <span className="text-sm font-semibold text-slate-700 font-mono">
-                    {new Date(selectedWord.nextReviewAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}
+                    {new Date(selectedWord.lastResetAt).toLocaleDateString(useTargetUi ? "en-US" : "zh-CN", { month: "numeric", day: "numeric" })}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                    {t.nextReviewLabel}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-700 font-mono">
+                    {new Date(selectedWord.nextReviewAt).toLocaleDateString(useTargetUi ? "en-US" : "zh-CN", { month: "numeric", day: "numeric" })}
                   </span>
                 </div>
               </div>
@@ -1200,7 +1305,8 @@ export default function WordList({
             <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-between shrink-0">
               <button
                 onClick={() => {
-                  if (confirm(`⚠️ 确定要从词库中删除单词 "${selectedWord.spelling}" 吗？这会抹除其历史学习记录！`)) {
+                  const confirmMsg = t.deleteConfirmMsg.replace("{word}", selectedWord.spelling);
+                  if (confirm(confirmMsg)) {
                     onDeleteWord(selectedWord.id);
                     setSelectedWord(null);
                   }
@@ -1208,7 +1314,7 @@ export default function WordList({
                 className="px-4 py-2 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                删除单词
+                {t.deleteWordBtn}
               </button>
 
               <div className="flex gap-2">
@@ -1219,13 +1325,13 @@ export default function WordList({
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      保存编辑
+                      {t.saveEditsBtn}
                     </button>
                     <button
                       onClick={() => setIsEditing(false)}
                       className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
                     >
-                      取消
+                      {t.cancel}
                     </button>
                   </>
                 ) : (
@@ -1236,7 +1342,9 @@ export default function WordList({
                       className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:cursor-not-allowed"
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
-                      {isRegenerating ? "AI正在生成..." : "AI 智能重新润色"}
+                      {isRegenerating 
+                        ? (useTargetUi ? "AI Generating..." : "AI正在生成...") 
+                        : t.aiRegenBtn}
                     </button>
                     
                     <button
@@ -1244,7 +1352,7 @@ export default function WordList({
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
-                      修改释义/例句
+                      {t.editDetailsBtn}
                     </button>
                   </>
                 )}

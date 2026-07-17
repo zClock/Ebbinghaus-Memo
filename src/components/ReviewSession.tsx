@@ -16,6 +16,7 @@ import {
   Compass,
   AlertCircle
 } from "lucide-react";
+import { getTranslation } from "../lib/translations";
 
 interface Word {
   id: string;
@@ -37,13 +38,19 @@ interface ReviewSessionProps {
   dueWords: Word[];
   onSubmitReview: (results: { wordId: string; firstTryCorrect: boolean }[]) => void;
   onClose: () => void;
+  selectedLanguage: string;
+  useTargetUi: boolean;
 }
 
 export default function ReviewSession({
   dueWords,
   onSubmitReview,
   onClose,
+  selectedLanguage,
+  useTargetUi,
 }: ReviewSessionProps) {
+  const t = getTranslation(selectedLanguage, useTargetUi);
+
   // Config states
   const [reviewMode, setReviewMode] = useState<"flashcard" | "spelling">("flashcard");
   const [isSessionStarted, setIsSessionStarted] = useState(false);
@@ -110,7 +117,11 @@ export default function ReviewSession({
   const speakFallback = (text: string) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
+      if (selectedLanguage === "Japanese") utterance.lang = 'ja-JP';
+      else if (selectedLanguage === "Spanish") utterance.lang = 'es-ES';
+      else if (selectedLanguage === "French") utterance.lang = 'fr-FR';
+      else if (selectedLanguage === "Portuguese") utterance.lang = 'pt-PT';
+      else utterance.lang = 'en-US';
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
     }
@@ -119,8 +130,6 @@ export default function ReviewSession({
   // Play audio automatically when a card appears (excellent user experience)
   useEffect(() => {
     if (isSessionStarted && currentWord && !isSessionFinished) {
-      // In spelling mode, playing sound can be a hint, let's play it too or let them trigger it. 
-      // Play voice automatically for flashcard, or when spelling is revealed/answered.
       if (reviewMode === "flashcard") {
         playSound(currentWord);
       }
@@ -241,15 +250,17 @@ export default function ReviewSession({
       
       {/* 1. START PANEL (Configuration) */}
       {!isSessionStarted && (
-        <div className="max-w-md mx-auto text-center py-10 space-y-6 relative z-10 my-auto">
+        <div className="max-w-md mx-auto text-center py-10 space-y-6 relative z-10 my-auto animate-fade-in">
           <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-md">
             <BookOpen className="w-8 h-8" />
           </div>
 
           <div className="space-y-2">
-            <h2 className="font-display font-extrabold text-2xl text-slate-900 tracking-tight">艾宾浩斯智能复习</h2>
+            <h2 className="font-display font-extrabold text-2xl text-slate-900 tracking-tight">
+              {t.studyModeSelection}
+            </h2>
             <p className="text-sm text-slate-500 font-light">
-              当前有 <b>{dueWords.length}</b> 个单词已到达复习时间窗。请选择今日测试模式开始强化：
+              {t.readyForReinforcement.replace("{count}", String(dueWords.length))}
             </p>
           </div>
 
@@ -265,9 +276,11 @@ export default function ReviewSession({
               }`}
             >
               <FileText className={`w-5 h-5 mb-2 ${reviewMode === "flashcard" ? "text-indigo-200" : "text-slate-400"}`} />
-              <p className="text-xs font-bold uppercase tracking-wide">闪卡模式</p>
-              <p className={`text-[10px] mt-1 font-light ${reviewMode === "flashcard" ? "text-indigo-100" : "text-slate-400"}`}>
-                卡片反转记忆，适合快速自测与释义浏览。
+              <p className="text-xs font-bold uppercase tracking-wide">
+                {t.flashcardMode}
+              </p>
+              <p className={`text-[10px] mt-1 font-light leading-relaxed ${reviewMode === "flashcard" ? "text-indigo-100" : "text-slate-400"}`}>
+                {t.flashcardModeDesc}
               </p>
             </button>
 
@@ -282,9 +295,11 @@ export default function ReviewSession({
               }`}
             >
               <Compass className={`w-5 h-5 mb-2 ${reviewMode === "spelling" ? "text-indigo-200" : "text-slate-400"}`} />
-              <p className="text-xs font-bold uppercase tracking-wide">拼写测试</p>
-              <p className={`text-[10px] mt-1 font-light ${reviewMode === "spelling" ? "text-indigo-100" : "text-slate-400"}`}>
-                拼写键入核对，深度建立字母与音节肌肉记忆。
+              <p className="text-xs font-bold uppercase tracking-wide">
+                {t.spellingQuiz}
+              </p>
+              <p className={`text-[10px] mt-1 font-light leading-relaxed ${reviewMode === "spelling" ? "text-indigo-100" : "text-slate-400"}`}>
+                {t.spellingQuizDesc}
               </p>
             </button>
           </div>
@@ -295,13 +310,13 @@ export default function ReviewSession({
               onClick={handleStartSession}
               className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md shadow-indigo-100 cursor-pointer w-full"
             >
-              启动复习会话
+              {t.launchSession}
             </button>
             <button
               onClick={onClose}
               className="px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold rounded-xl transition-all cursor-pointer"
             >
-              返回
+              {t.back}
             </button>
           </div>
         </div>
@@ -309,17 +324,17 @@ export default function ReviewSession({
 
       {/* 2. CARD REVIEW INTERACTION */}
       {isSessionStarted && !isSessionFinished && currentWord && (
-        <div className="flex-1 flex flex-col justify-between relative z-10">
+        <div className="flex-1 flex flex-col justify-between relative z-10 animate-fade-in">
           
           {/* Header Indicators */}
           <div className="flex justify-between items-center shrink-0 border-b border-slate-100/50 pb-4 mb-6">
             <div>
               <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100/50 uppercase">
-                复习轮次 #{roundNumber}
+                {t.roundNumber.replace("{round}", String(roundNumber))}
               </span>
               {incorrectQueue.length > 0 && (
                 <span className="text-[10px] font-mono font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100/50 ml-2">
-                  本轮新增错词: {incorrectQueue.length}
+                  {t.recycledCount.replace("{count}", String(incorrectQueue.length))}
                 </span>
               )}
             </div>
@@ -328,7 +343,9 @@ export default function ReviewSession({
               <span className="text-xs font-bold text-slate-600 font-mono">
                 {currentIndex + 1} / {activeQueue.length}
               </span>
-              <span className="text-[10px] text-slate-400 block font-light">本轮复习进度</span>
+              <span className="text-[10px] text-slate-400 block font-light">
+                {t.roundProgress}
+              </span>
             </div>
           </div>
 
@@ -347,7 +364,7 @@ export default function ReviewSession({
                   }}
                   disabled={currentIndex === 0}
                   className="hidden md:flex w-12 h-12 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 disabled:opacity-30 disabled:hover:bg-white text-slate-600 items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                  title="上一个单词"
+                  title={t.prevWord}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
@@ -357,7 +374,6 @@ export default function ReviewSession({
               <div 
                 onClick={(e) => {
                   if (reviewMode === "flashcard") {
-                    // Check if clicked button or interactive elements
                     if (
                       (e.target as HTMLElement).closest('button') || 
                       (e.target as HTMLElement).closest('input') || 
@@ -374,7 +390,7 @@ export default function ReviewSession({
               >
                 {reviewMode === "flashcard" && (
                   <div className="absolute top-3 right-4 text-[10px] text-slate-400 font-light pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                    🖱️ 点击卡片任意区域可折叠/展示释义
+                    {t.clickToToggle}
                   </div>
                 )}
                 
@@ -404,20 +420,26 @@ export default function ReviewSession({
                             onClick={() => setIsAnswerRevealed(true)}
                             className="px-6 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-bold transition-all uppercase cursor-pointer"
                           >
-                            展示中文释义与助记
+                            {t.revealTranslation}
                           </button>
-                          <p className="text-[10px] text-slate-400 font-light mt-3">你也可以直接点击卡片任意区域</p>
+                          <p className="text-[10px] text-slate-400 font-light mt-3">
+                            {t.orClickAnywhere}
+                          </p>
                         </div>
                       ) : (
                         <div className="pt-4 space-y-4 border-t border-slate-50 text-left animate-fade-in">
                           <div>
-                            <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide block">中文释义</label>
+                            <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide block">
+                              {t.definitionLabel}
+                            </label>
                             <p className="text-base font-semibold text-slate-800">{currentWord.definition}</p>
                           </div>
 
                           {currentWord.example && (
                             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">精选语境</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">
+                                {t.contextExample}
+                              </label>
                               <p className="text-xs font-serif italic text-slate-700">"{currentWord.example}"</p>
                               <p className="text-[11px] text-slate-500 mt-1">{currentWord.exampleTranslation}</p>
                             </div>
@@ -425,12 +447,16 @@ export default function ReviewSession({
 
                           {currentWord.mnemonic && (
                             <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100/30">
-                              <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide block">💡 艾宾浩斯记忆助记</label>
+                              <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wide block">
+                                {t.ebbinghausMnemonic}
+                              </label>
                               <p className="text-xs text-amber-800 mt-1 font-light leading-relaxed">{currentWord.mnemonic}</p>
                             </div>
                           )}
                           
-                          <p className="text-[10px] text-slate-400 font-light text-center pt-1 block">💡 再次点击卡片即可收起释义</p>
+                          <p className="text-[10px] text-slate-400 font-light text-center pt-1 block">
+                            {t.clickAgainToFold}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -438,17 +464,19 @@ export default function ReviewSession({
 
                   {/* 2. Spelling Mode Display */}
                   {reviewMode === "spelling" && (
-                    <div className="space-y-4 text-left">
+                    <div className="space-y-4 text-left animate-fade-in">
                       {/* Header hints */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">音标 & 释义提示</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              {t.phoneticHint}
+                            </span>
                             <span className="text-sm font-mono font-bold text-slate-500">{currentWord.phonetic || "/-/"}</span>
                           </div>
                           <button
                             onClick={() => playSound(currentWord)}
-                            title="听发音"
+                            title={t.listenPronunciation}
                             className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors cursor-pointer"
                           >
                             <Volume2 className="w-4 h-4" />
@@ -460,7 +488,9 @@ export default function ReviewSession({
                       {/* Masked sentence context */}
                       {currentWord.example && (
                         <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 space-y-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">语境完形填空</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {t.fillBlanks}
+                          </span>
                           <p className="text-xs font-serif text-slate-800 leading-relaxed italic">
                             "{currentWord.example.replace(new RegExp(`\\b${currentWord.spelling}\\b`, "gi"), getMaskedSpelling(currentWord.spelling))}"
                           </p>
@@ -472,7 +502,9 @@ export default function ReviewSession({
 
                       {/* Input interaction */}
                       <form onSubmit={handleSpellingSubmit} className="space-y-3 pt-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">键入拼写</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          {t.typeSpelling}
+                        </label>
                         <div className="flex gap-2">
                           <input
                             id="input-spelling-answer"
@@ -482,15 +514,15 @@ export default function ReviewSession({
                             autoCorrect="off"
                             autoCapitalize="none"
                             spellCheck="false"
-                            placeholder={`拼写该词, 首字母为: ${currentWord.spelling[0]}`}
+                            placeholder={t.spellingPlaceholder.replace("{char}", currentWord.spelling[0])}
                             value={typedAnswer}
                             onChange={(e) => setTypedAnswer(e.target.value)}
                             disabled={isSpellingSubmitted}
                             className={`flex-1 px-4 py-2.5 border rounded-xl text-sm font-mono text-slate-800 focus:outline-none focus:bg-white transition-all ${
                               isSpellingSubmitted
                                 ? isSpellingCorrect
-                                  ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                                  : "bg-rose-50 border-rose-300 text-rose-800"
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                                    : "bg-rose-50 border-rose-300 text-rose-800"
                                 : "bg-slate-50 border-slate-200 focus:border-indigo-500"
                             }`}
                           />
@@ -500,7 +532,7 @@ export default function ReviewSession({
                               type="submit"
                               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition-all shadow-sm cursor-pointer"
                             >
-                              提交核对
+                              {t.checkBtn}
                             </button>
                           )}
                         </div>
@@ -510,7 +542,9 @@ export default function ReviewSession({
                           <div className="flex gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100 text-xs text-rose-700 items-start">
                             <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
                             <div>
-                              <span className="font-semibold block">拼写有误！正确拼写为:</span>
+                              <span className="font-semibold block">
+                                {t.spellingIncorrect}
+                              </span>
                               <span className="font-mono text-sm font-bold block mt-0.5 text-rose-800 select-all">{currentWord.spelling}</span>
                             </div>
                           </div>
@@ -520,7 +554,7 @@ export default function ReviewSession({
                         {isSpellingSubmitted && isSpellingCorrect && (
                           <div className="flex gap-2 p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-700 items-center">
                             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                            <span className="font-semibold">完全正确！太棒了。</span>
+                            <span className="font-semibold">{t.spellingCorrect}</span>
                           </div>
                         )}
                       </form>
@@ -528,7 +562,7 @@ export default function ReviewSession({
                       {/* Mnemonic helper on answer revealed */}
                       {isAnswerRevealed && currentWord.mnemonic && (
                         <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100/30 text-xs text-amber-800 animate-fade-in">
-                          <span className="font-semibold block">💡 艾宾浩斯记忆助记：</span>
+                          <span className="font-semibold block">{t.ebbinghausMnemonic}</span>
                           <p className="mt-0.5 font-light leading-relaxed">{currentWord.mnemonic}</p>
                         </div>
                       )}
@@ -548,7 +582,7 @@ export default function ReviewSession({
                         className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        记住了
+                        {t.rememberedBtn}
                       </button>
                       <button
                         id="btn-flashcard-incorrect"
@@ -556,7 +590,7 @@ export default function ReviewSession({
                         className="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-semibold rounded-xl text-sm transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         <XCircle className="w-4 h-4" />
-                        没记住
+                        {t.forgotBtn}
                       </button>
                     </div>
                   )}
@@ -568,7 +602,7 @@ export default function ReviewSession({
                       onClick={handleAdvance}
                       className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <span>下一词</span>
+                      <span>{t.nextBtn}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   )}
@@ -587,7 +621,7 @@ export default function ReviewSession({
                   }}
                   disabled={currentIndex === activeQueue.length - 1}
                   className="hidden md:flex w-12 h-12 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 disabled:opacity-30 disabled:hover:bg-white text-slate-600 items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                  title="下一个单词"
+                  title={t.nextWord}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
@@ -609,7 +643,7 @@ export default function ReviewSession({
                   className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  上一个
+                  {useTargetUi ? "Prev" : "上一个"}
                 </button>
                 <button
                   onClick={() => {
@@ -621,7 +655,7 @@ export default function ReviewSession({
                   disabled={currentIndex === activeQueue.length - 1}
                   className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-30 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
                 >
-                  下一个
+                  {useTargetUi ? "Next" : "下一个"}
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -637,8 +671,8 @@ export default function ReviewSession({
               ></div>
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 font-light mt-1.5">
-              <span>本轮已复习 {currentIndex} 个单词</span>
-              <span>剩余 {activeQueue.length - currentIndex} 个单词</span>
+              <span>{t.reviewedWordsCount.replace("{count}", String(currentIndex))}</span>
+              <span>{t.wordsRemainingCount.replace("{count}", String(activeQueue.length - currentIndex))}</span>
             </div>
           </div>
 
@@ -654,9 +688,11 @@ export default function ReviewSession({
           </div>
 
           <div className="space-y-1.5">
-            <h2 className="font-display font-extrabold text-2xl text-slate-900 tracking-tight">恭喜完成复习！</h2>
+            <h2 className="font-display font-extrabold text-2xl text-slate-900 tracking-tight">
+              {t.reviewComplete}
+            </h2>
             <p className="text-xs text-slate-400 font-light px-2">
-              您通过“错词循环法”完成了全部待复习单词的二次巩固。在第一轮尝试中：
+              {t.consolidatedInfo}
             </p>
           </div>
 
@@ -665,27 +701,25 @@ export default function ReviewSession({
             <div className="flex justify-around items-center">
               <div>
                 <span className="text-3xl font-display font-black text-slate-800 block">{totalDueCount}</span>
-                <span className="text-[10px] text-slate-400 font-light">复习总数</span>
+                <span className="text-[10px] text-slate-400 font-light">{t.totalReviewed}</span>
               </div>
               <div className="h-8 w-px bg-slate-100"></div>
               <div>
                 <span className="text-3xl font-display font-black text-indigo-600 block">{firstTryCorrectCount}</span>
-                <span className="text-[10px] text-indigo-400 font-semibold block">首通数</span>
+                <span className="text-[10px] text-indigo-400 font-semibold block">{t.firstTryCorrect}</span>
               </div>
               <div className="h-8 w-px bg-slate-100"></div>
               <div>
                 <span className={`text-3xl font-display font-black block ${firstTryCorrectPercentage >= 80 ? "text-emerald-500" : "text-slate-700"}`}>
                   {firstTryCorrectPercentage}%
                 </span>
-                <span className="text-[10px] text-slate-400 font-light">首通掌握率</span>
+                <span className="text-[10px] text-slate-400 font-light">{t.firstTryAccuracy}</span>
               </div>
             </div>
 
             {/* AI congratulation or advice */}
-            <p className="text-[11px] text-slate-500 leading-relaxed font-light border-t border-slate-50 pt-3">
-              {firstTryCorrectPercentage >= 80
-                ? "💡 惊人的记忆韧度！高比例的首通正确会让单词获得大量连胜累积，加速进入“已掌握”豁免期。"
-                : "💡 没关系，遗忘是非常正常的生理机制。本次错词已经全部在会话内帮您循环背诵直到记住，系统已经预排它们明天再次复习以固化痕迹。"}
+            <p className="text-[11px] text-slate-500 leading-relaxed font-light border-t border-slate-50 pt-3 text-left">
+              {firstTryCorrectPercentage >= 80 ? t.aiStaggeringStamina : t.aiForgettingNatural}
             </p>
           </div>
 
@@ -694,7 +728,7 @@ export default function ReviewSession({
             <div className="bg-rose-50/50 rounded-2xl border border-rose-100/40 p-4 text-left space-y-2">
               <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" />
-                第一轮未能通过的词汇（已触发明天重置复习）
+                {t.failedWordsScheduled}
               </span>
               <div className="flex flex-wrap gap-2">
                 {Array.from(firstTryFailures).map(id => {
@@ -717,7 +751,7 @@ export default function ReviewSession({
               className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all shadow-md shadow-indigo-100 cursor-pointer flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4 text-yellow-300" />
-              <span>同步记录并结束复习</span>
+              <span>{t.syncAndEnd}</span>
             </button>
           </div>
         </div>

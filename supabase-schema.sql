@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS words (
   review_stage INTEGER DEFAULT 0,
   consecutive_correct INTEGER DEFAULT 0,
   last_reset_at TEXT NOT NULL,
-  next_review_at TEXT NOT NULL
+  next_review_at TEXT NOT NULL,
+  language TEXT DEFAULT 'English'
 );
 
 -- 4. Create histories table
@@ -48,7 +49,16 @@ CREATE TABLE IF NOT EXISTS histories (
   is_correct BOOLEAN NOT NULL
 );
 
--- 5. Create system_config table for global configurations
+-- 5. Create user_language_settings table for multi-language settings per user
+CREATE TABLE IF NOT EXISTS user_language_settings (
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  language TEXT NOT NULL,
+  daily_goal INTEGER DEFAULT 15,
+  level TEXT DEFAULT 'CET4',
+  PRIMARY KEY (user_id, language)
+);
+
+-- 6. Create system_config table for global configurations
 CREATE TABLE IF NOT EXISTS system_config (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

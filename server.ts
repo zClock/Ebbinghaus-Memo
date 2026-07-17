@@ -25,7 +25,9 @@ import {
   updateWord,
   submitReview,
   resetUserWords,
-  syncUserDataFromCloud
+  syncUserDataFromCloud,
+  getUserLanguageSettings,
+  upsertUserLanguageSettings
 } from "./serverDb";
 
 dotenv.config();
@@ -144,7 +146,7 @@ async function getVirtualTime(): Promise<Date> {
 }
 
 // AI generation fallback for dictionary details
-async function generateAiWordDetails(spelling: string): Promise<{
+async function generateAiWordDetails(spelling: string, targetLanguage: string = "English"): Promise<{
   phonetic: string;
   definition: string;
   example: string;
@@ -155,10 +157,10 @@ async function generateAiWordDetails(spelling: string): Promise<{
     throw new Error("Gemini API not configured");
   }
 
-  const prompt = `You are a high-quality smart English dictionary helper for Chinese learners.
-Generate comprehensive dictionary information for the word/phrase: "${spelling}".
+  const prompt = `You are a high-quality smart ${targetLanguage} dictionary helper for Chinese learners.
+Generate comprehensive dictionary information for the word/phrase/character in ${targetLanguage}: "${spelling}".
 Produce the results strictly in the required JSON structure.
-Be accurate with IPA phonetics (prefer US/UK standard), clear with Chinese translation meanings, create a modern and helpful context example sentence, translate that sentence into natural Chinese, and provide a fun/etymological mnemonic association (like word roots, similar sounding words, or funny stories) to help SRS memory.`;
+Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for Japanese, etc.), clear with Chinese translation meanings, create a modern and helpful context example sentence in ${targetLanguage}, translate that sentence into natural Chinese, and provide a fun/etymological mnemonic association (like word roots, kanji/radical breakdown, similar sounding words, or funny stories) to help SRS memory.`;
 
   // We try multiple models because some models like gemini-3.5-flash might experience temporary high demand (503)
   const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
@@ -404,17 +406,31 @@ app.post("/api/auth/logout", async (req, res) => {
 });
 
 // Get currently logged-in user profile
-app.get("/api/auth/me", authMiddleware, (req: any, res) => {
+app.get("/api/auth/me", authMiddleware, async (req: any, res) => {
   const { passwordHash, ...safeUser } = req.user;
+  const lang = req.query.language as string || "English";
+  try {
+    const settings = await getUserLanguageSettings(req.userId, lang);
+    safeUser.level = settings.level;
+    safeUser.dailyGoal = settings.dailyGoal;
+  } catch (err) {
+    console.error("Error setting dynamic language settings in /api/auth/me:", err);
+  }
   res.json(safeUser);
 });
 
 // Update profile info
 app.put("/api/auth/profile", authMiddleware, async (req: any, res) => {
-  const { name, level, dailyGoal } = req.body;
+  const { name, level, dailyGoal, language } = req.body;
   try {
-    const updatedUser = await updateUser(req.userId, { name, level, dailyGoal });
+    const updatedUser = await updateUser(req.userId, { name });
+    const lang = language || "English";
+    await upsertUserLanguageSettings(req.userId, lang, Number(dailyGoal || 15), level || "CET4");
+    
+    const settings = await getUserLanguageSettings(req.userId, lang);
     const { passwordHash, ...safeUser } = updatedUser;
+    safeUser.level = settings.level;
+    safeUser.dailyGoal = settings.dailyGoal;
     res.json(safeUser);
   } catch (err: any) {
     console.error("Profile update error:", err);
@@ -480,8 +496,12 @@ app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
   try {
     const vTime = await getVirtualTime();
     const userId = req.userId;
+    const targetLang = req.query.language as string || "All";
     
-    const userWords = await getUserWords(userId);
+    let userWords = await getUserWords(userId);
+    if (targetLang !== "All") {
+      userWords = userWords.filter(w => (w.language || "English") === targetLang);
+    }
     const totalWords = userWords.length;
     const dueTodayCount = userWords.filter(w => {
       return new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6;
@@ -497,7 +517,11 @@ app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
     });
 
     // Calculate Streak metrics from user histories
-    const userHistories = await getUserHistories(userId);
+    let userHistories = await getUserHistories(userId);
+    if (targetLang !== "All") {
+      const wordIds = new Set(userWords.map(w => w.id));
+      userHistories = userHistories.filter(h => wordIds.has(h.wordId));
+    }
     let currentStreak = 0;
     let maxStreak = 0;
 
@@ -595,7 +619,11 @@ app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
 app.get("/api/words", authMiddleware, async (req: any, res) => {
   try {
     const userId = req.userId;
-    const userWords = await getUserWords(userId);
+    let userWords = await getUserWords(userId);
+    const targetLang = req.query.language as string || "All";
+    if (targetLang !== "All") {
+      userWords = userWords.filter(w => (w.language || "English") === targetLang);
+    }
     res.json(userWords);
   } catch (err: any) {
     console.error("Words API error:", err);
@@ -607,7 +635,13 @@ app.get("/api/words", authMiddleware, async (req: any, res) => {
 app.get("/api/histories", authMiddleware, async (req: any, res) => {
   try {
     const userId = req.userId;
-    const userHistories = await getUserHistories(userId);
+    let userHistories = await getUserHistories(userId);
+    const targetLang = req.query.language as string || "All";
+    if (targetLang !== "All") {
+      const userWords = await getUserWords(userId);
+      const langWordIds = new Set(userWords.filter(w => (w.language || "English") === targetLang).map(w => w.id));
+      userHistories = userHistories.filter(h => langWordIds.has(h.wordId));
+    }
     res.json(userHistories);
   } catch (err: any) {
     console.error("Histories API error:", err);
@@ -620,7 +654,11 @@ app.get("/api/words/due", authMiddleware, async (req: any, res) => {
   try {
     const vTime = await getVirtualTime();
     const userId = req.userId;
-    const due = await getUserDueWords(userId, vTime);
+    let due = await getUserDueWords(userId, vTime);
+    const targetLang = req.query.language as string || "All";
+    if (targetLang !== "All") {
+      due = due.filter(w => (w.language || "English") === targetLang);
+    }
     res.json(due);
   } catch (err: any) {
     console.error("Due words API error:", err);
@@ -630,17 +668,18 @@ app.get("/api/words/due", authMiddleware, async (req: any, res) => {
 
 // 5. Create word (auto fetching dictionary / fallback Gemini)
 app.post("/api/words/create", authMiddleware, async (req: any, res) => {
-  const { spelling } = req.body;
+  const { spelling, language } = req.body;
   if (!spelling || !spelling.trim()) {
     return res.status(400).json({ error: "Word spelling is required" });
   }
 
   const cleanSpelling = spelling.trim().toLowerCase();
   const userId = req.userId;
+  const targetLanguage = language || "English";
 
   try {
     // Check if word already exists for this user
-    const exists = await findWordBySpelling(userId, cleanSpelling);
+    const exists = await findWordBySpelling(userId, cleanSpelling, targetLanguage);
     if (exists) {
       return res.status(400).json({ error: `单词 "${cleanSpelling}" 已经存在于您的个人词库中。` });
     }
@@ -652,41 +691,43 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
     let mnemonic = "";
     let audioUrl = "";
 
-    // Attempt dictionaryapi.dev first
-    try {
-      const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
-      if (dictRes.ok) {
-        const dictData = await dictRes.json();
-        if (Array.isArray(dictData) && dictData.length > 0) {
-          const item = dictData[0];
-          phonetic = item.phonetic || (item.phonetics && item.phonetics.find((p: any) => p.text)?.text) || "";
-          
-          // Find audio
-          if (item.phonetics) {
-            const validAudio = item.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
-            if (validAudio) {
-              audioUrl = validAudio.audio;
+    // Attempt dictionaryapi.dev first ONLY if target language is English
+    if (targetLanguage === "English") {
+      try {
+        const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
+        if (dictRes.ok) {
+          const dictData = await dictRes.json();
+          if (Array.isArray(dictData) && dictData.length > 0) {
+            const item = dictData[0];
+            phonetic = item.phonetic || (item.phonetics && item.phonetics.find((p: any) => p.text)?.text) || "";
+            
+            // Find audio
+            if (item.phonetics) {
+              const validAudio = item.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
+              if (validAudio) {
+                audioUrl = validAudio.audio;
+              }
             }
-          }
 
-          // Try parsing definition/example
-          if (item.meanings && item.meanings.length > 0) {
-            const meaning = item.meanings[0];
-            if (meaning.definitions && meaning.definitions.length > 0) {
-              definition = meaning.definitions[0].definition || "";
-              example = meaning.definitions[0].example || "";
+            // Try parsing definition/example
+            if (item.meanings && item.meanings.length > 0) {
+              const meaning = item.meanings[0];
+              if (meaning.definitions && meaning.definitions.length > 0) {
+                definition = meaning.definitions[0].definition || "";
+                example = meaning.definitions[0].example || "";
+              }
             }
           }
         }
+      } catch (err) {
+        console.warn("Standard Dictionary API fetch failed, proceeding to fallback", err);
       }
-    } catch (err) {
-      console.warn("Standard Dictionary API fetch failed, proceeding to fallback", err);
     }
 
     // If Gemini is active, let's use it to generate highly enriched translations, examples, and mnemonics
     if (ai) {
       try {
-        const aiData = await generateAiWordDetails(cleanSpelling);
+        const aiData = await generateAiWordDetails(cleanSpelling, targetLanguage);
         phonetic = aiData.phonetic || phonetic;
         definition = aiData.definition;
         example = aiData.example;
@@ -728,7 +769,8 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
       reviewStage: 0,
       consecutiveCorrect: 0,
       lastResetAt: vTime.toISOString(),
-      nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString() // +1 day (tomorrow)
+      nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(), // +1 day (tomorrow)
+      language: targetLanguage
     };
 
     await createWord(newWord);
@@ -742,10 +784,12 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
 
 // 5.5 Batch import words
 app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
-  const { spellings } = req.body;
+  const { spellings, language } = req.body;
   if (!spellings || !Array.isArray(spellings)) {
     return res.status(400).json({ error: "Spellings 必须是一个数组" });
   }
+
+  const targetLanguage = language || "English";
 
   try {
     const vTime = await getVirtualTime();
@@ -753,7 +797,11 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
     const errors: any[] = [];
     
     const userWordsList = await getUserWords(req.userId);
-    const existingWords = new Set(userWordsList.map(w => w.spelling.toLowerCase()));
+    const existingWords = new Set(
+      userWordsList
+        .filter(w => (w.language || "English") === targetLanguage)
+        .map(w => w.spelling.toLowerCase())
+    );
 
     // Limit batch size to prevent long timeouts or Gemini rate limit issues
     const maxBatchSize = 30;
@@ -764,7 +812,7 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
     )).slice(0, maxBatchSize);
 
     if (targetSpellings.length === 0) {
-      return res.status(400).json({ error: "未检测到有效的英文单词，请检查输入。" });
+      return res.status(400).json({ error: `未检测到有效的${targetLanguage === "English" ? "英文" : targetLanguage}单词，请检查输入。` });
     }
 
     // Process sequentially to be extremely safe with API rate limits (like Gemini)
@@ -784,39 +832,41 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
       let mnemonic = "";
       let audioUrl = "";
 
-      // 1. Try standard Dictionary API
-      try {
-        const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
-        if (dictRes.ok) {
-          const dictData = await dictRes.json();
-          if (Array.isArray(dictData) && dictData.length > 0) {
-            const item = dictData[0];
-            phonetic = item.phonetic || (item.phonetics && item.phonetics.find((p: any) => p.text)?.text) || "";
-            
-            if (item.phonetics) {
-              const validAudio = item.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
-              if (validAudio) {
-                audioUrl = validAudio.audio;
+      // 1. Try standard Dictionary API ONLY if English
+      if (targetLanguage === "English") {
+        try {
+          const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
+          if (dictRes.ok) {
+            const dictData = await dictRes.json();
+            if (Array.isArray(dictData) && dictData.length > 0) {
+              const item = dictData[0];
+              phonetic = item.phonetic || (item.phonetics && item.phonetics.find((p: any) => p.text)?.text) || "";
+              
+              if (item.phonetics) {
+                const validAudio = item.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
+                if (validAudio) {
+                  audioUrl = validAudio.audio;
+                }
               }
-            }
 
-            if (item.meanings && item.meanings.length > 0) {
-              const meaning = item.meanings[0];
-              if (meaning.definitions && meaning.definitions.length > 0) {
-                definition = meaning.definitions[0].definition || "";
-                example = meaning.definitions[0].example || "";
+              if (item.meanings && item.meanings.length > 0) {
+                const meaning = item.meanings[0];
+                if (meaning.definitions && meaning.definitions.length > 0) {
+                  definition = meaning.definitions[0].definition || "";
+                  example = meaning.definitions[0].example || "";
+                }
               }
             }
           }
+        } catch (err) {
+          console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
         }
-      } catch (err) {
-        console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
       }
 
       // 2. Try Gemini AI enrichment
       if (ai) {
         try {
-          const aiData = await generateAiWordDetails(cleanSpelling);
+          const aiData = await generateAiWordDetails(cleanSpelling, targetLanguage);
           phonetic = aiData.phonetic || phonetic;
           definition = aiData.definition;
           example = aiData.example;
@@ -856,7 +906,8 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
         reviewStage: 0,
         consecutiveCorrect: 0,
         lastResetAt: vTime.toISOString(),
-        nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString()
+        nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        language: targetLanguage
       };
 
       results.push(newWord);
