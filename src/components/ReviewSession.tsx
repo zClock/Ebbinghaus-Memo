@@ -92,6 +92,10 @@ export default function ReviewSession({
   const [definitionSelected, setDefinitionSelected] = useState<string | null>(null);
   // 已经预加载过的 wordId 集合，避免重复请求
   const prefetchedIdsRef = useRef<Set<string>>(new Set());
+  // 已为当前 wordId 构造过 options 的标记（防止缓存更新触发再次 shuffle）
+  const optionsBuiltForRef = useRef<string | null>(null);
+  // 全局初始准备状态：只在点"启动复习会话"后开启，第一题缓存就绪后关闭
+  const [isInitialPreparing, setIsInitialPreparing] = useState(false);
 
   // 工具函数：fetch /api/generate-distractors
   const fetchDistractors = async (wordId: string, word: Word) => {
@@ -175,9 +179,11 @@ export default function ReviewSession({
     setDefinitionAnswered(false);
     setDefinitionSelected(null);
     prefetchedIdsRef.current = new Set();
+    optionsBuiltForRef.current = null;
 
     // 辨义模式启动时：预加载前 3 个单词的干扰词
     if (reviewMode === "definition") {
+      setIsInitialPreparing(true);
       const firstThree = dueWords.slice(0, 3).map(w => w.id);
       preloadDistractors(firstThree);
     }
@@ -215,14 +221,20 @@ export default function ReviewSession({
     }
   }, [currentIndex, roundNumber, isSessionStarted]);
 
-  // DEFINITION: 切换到新词时，如缓存已有则立即构造选项；
+  // DEFINITION: 切换到新词时，如缓存已有则立即构造选项（只构造一次）；
   // 同时预加载后续 3 个词（保持提前量，错题轮不重复请求）
   useEffect(() => {
     if (!isSessionStarted || reviewMode !== "definition" || !currentWord || isSessionFinished) return;
 
+    // 只在尚未为当前词构造过 options 时才构造（避免缓存更新触发再次 shuffle）
     const cached = distractorCache[currentWord.id];
-    if (cached) {
+    if (cached && optionsBuiltForRef.current !== currentWord.id) {
       setDefinitionOptions(buildOptions(cached));
+      optionsBuiltForRef.current = currentWord.id;
+      // 第一题缓存就绪，关闭全局初始 loading
+      if (currentIndex === 0 && roundNumber === 1) {
+        setIsInitialPreparing(false);
+      }
     }
 
     // 预加载后续 3 个词
@@ -765,8 +777,8 @@ export default function ReviewSession({
                         </p>
                       </div>
 
-                      {/* 加载中提示 */}
-                      {loadingIds.has(currentWord.id) && definitionOptions.length === 0 && (
+                      {/* 加载中提示：仅在第一题准备阶段显示（启动后预加载未就绪时） */}
+                      {isInitialPreparing && definitionOptions.length === 0 && (
                         <div className="flex items-center justify-center gap-2 py-6 text-slate-500 text-sm">
                           <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
                           <span>{t.preparingMaterials}</span>
