@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.6（2026-07-17，管理员白名单 + i18n 完整化 + E2E 测试基建）
+- **当前版本**：v1.7（2026-07-18，FIFA 足球规则科普讲堂）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -79,6 +79,17 @@
 - [index.html](file:///index.html) 内联 SVG data URI 作为 favicon
 - 图形：学士帽（与全站 lucide `GraduationCap` 一致）+ indigo 圆角底（`#4F46E5`）
 - 无额外文件请求，支持高 DPI，主题切换不丢失
+
+## §1.10 足球规则科普讲堂（v1.7）
+- Dashboard 新增绿茵色入口卡片（学士帽 badge + 旋转指南针 + 国际足联标识）
+- 17 章 FIFA 2026/2027 最新规则完整数据（687 行），5 大分类（场地与装备 / 裁判执法 / 比赛时序 / 越位与犯规 / 定位球与重新开始）
+- 支持全文搜索（含结果高亮）、分类筛选、章节索引、上下分页
+- 重点标识 2026/2027 新规：Law 12（守门员8秒持球）、Law 15（5秒界外球）、Law 16（5秒球门球）
+- 多语言策略：
+  · UI 文案（按钮/Tab/分类/入口卡）已翻译为 6 种 UI 语言
+  · 规则正文数据本身为中英双语，按 UI 语言决定渲染：
+    - 中文 UI → 中英对照（保留特殊阅读体验）
+    - 英文/日/西/法/葡 UI → 仅英文（数据回退）
 
 ---
 
@@ -185,6 +196,7 @@
 | `WordList` | [src/components/WordList.tsx](file:///src/components/WordList.tsx) | 词库 CRUD + 批量导入 + 导入进度条 + 正确分页文案 |
 | `ReviewSession` | [src/components/ReviewSession.tsx](file:///src/components/ReviewSession.tsx) | 复习会话 + 错词重考 + Unicode-safe 例句挖空 |
 | `Profile` | [src/components/Profile.tsx](file:///src/components/Profile.tsx) | 资料 + 改密码 + 勋章墙（level 入口已移除）|
+- FootballRules.tsx（v1.7）
 
 ---
 
@@ -253,6 +265,8 @@
 ---
 
 ## 8. 版本历史
+
+**v1.7（2026-07-18）**：FIFA 足球规则科普讲堂 —— 新增 FootballRules 组件 + 17 章数据 + 6 语言 UI 翻译（36 键 × 6 语言）+ Dashboard 入口卡片 + 索引动画（fade-in/spin-slow/scrollbar-thin）。策略：UI 跟随语言切换，规则正文按 UI 语言决定中英对照或仅英文
 
 - **v1.6（2026-07-17）**：i18n 完整化 + E2E 测试基建 + 错误修复。
   - 🔴 i18n：5 种目标语言（英/日/西/法/葡）补齐 WordList 用的 59 个翻译键（共 +295 条），修复切目标语言后按钮/tab/标签空白；`getTranslation` 加 `{...Chinese, ...target}` 兜底；补齐 `emptyLibraryCta` 6 语言翻译（修复英文模式下空词库引导按钮仍是中文）

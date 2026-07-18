@@ -10,6 +10,7 @@
 - 采用 6 阶段 SRS（间隔重复）算法：`[1, 2, 4, 7, 15, 30]` 天
 - 支持多语言词库（English / Japanese / Spanish / French / Portuguese）
 - 支持时间旅行（虚拟时间快进），用于触发复习演示
+- 附带 FIFA 足球规则科普讲堂（17 章 2026/2027 最新规则，中英双语对照）
 - 数据持久化到 Supabase Postgres（生产）或本地 JSON 文件（开发默认）
 
 ## 2. 技术栈
@@ -40,13 +41,15 @@
 │   ├── types.ts           # 前端类型定义（User / Word / Stats）
 │   ├── components/
 │   │   ├── Auth.tsx       # 登录/注册（level 已移除，dailyGoal 输入修复）
-│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导 + 管理员白名单 isPrivileged）
+│   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导 + 管理员白名单 isPrivileged + 足球规则入口卡）
 │   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
 │   │   ├── ReviewSession.tsx  # 复习会话（错词重考 + Unicode-safe 例句挖空）
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
+│   │   ├── FootballRules.tsx  # ⚽ FIFA 足球规则科普讲堂（v1.7：17 章沉浸式阅读）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 84+ 键，含 Chinese 兜底）
+│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段）
+│       ├── footballRulesData.ts  # ⚽ 17 章 FIFA 规则数据（687 行，中英双语对照，v1.7 引入）
 │       └── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
 ├── tests/
 │   ├── unit/                 # 单元测试（Vitest，纯函数、算法、数据映射）
