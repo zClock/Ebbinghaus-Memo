@@ -135,6 +135,7 @@ export interface TranslationSet {
   spellingQuizDesc: string;
   definitionChoice: string;
   definitionChoiceDesc: string;
+  comingSoon: string;
   chooseCorrectSpelling: string;
   preparingMaterials: string;
   distractorLoadFailed: string;
@@ -450,6 +451,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "拼写键入核对，深度建立字母与音节肌肉记忆。",
     definitionChoice: "辨义选择",
     definitionChoiceDesc: "根据中文释义，从 6 个拼写相近的单词中选出正确答案。",
+    comingSoon: "建设中，敬请期待",
     chooseCorrectSpelling: "下面哪个单词对应这个释义？",
     preparingMaterials: "正在准备复习材料…",
     distractorLoadFailed: "干扰词加载失败，请稍后重试或切换模式。",
@@ -822,6 +824,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "Type spelling manually to build deep muscular memory and letter-sound bonds.",
     definitionChoice: "Definition Choice",
     definitionChoiceDesc: "Pick the correct word from 6 confusable spellings based on a Chinese definition.",
+    comingSoon: "Coming soon",
     chooseCorrectSpelling: "Which word matches this definition?",
     preparingMaterials: "Preparing review materials…",
     distractorLoadFailed: "Failed to load distractors. Please retry or switch mode.",
@@ -1135,6 +1138,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "実際に単語を入力して、綴りと音声を深く脳に刻み込みます。",
     definitionChoice: "訳義選択",
     definitionChoiceDesc: "中国語訳から、綴りの似た 6 つの単語の中から正しいものを選びます。",
+    comingSoon: "準備中，お楽しみに",
     chooseCorrectSpelling: "この訳に対応する単語はどれ？",
     preparingMaterials: "復習材料を準備中…",
     distractorLoadFailed: "ダミー語の読み込みに失敗しました。再試行またはモードを切り替えてください。",
@@ -1448,6 +1452,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "Escriba las palabras para consolidar la memoria muscular y auditiva.",
     definitionChoice: "Elección por Definición",
     definitionChoiceDesc: "Elige la palabra correcta entre 6 con ortografía similar según la definición en chino.",
+    comingSoon: "Próximamente",
     chooseCorrectSpelling: "¿Qué palabra corresponde a esta definición?",
     preparingMaterials: "Preparando materiales de repaso…",
     distractorLoadFailed: "Error al cargar distractores. Reintenta o cambia de modo.",
@@ -1761,6 +1766,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "Saisissez les mots pour consolider la mémoire musculaire et auditive.",
     definitionChoice: "Choix par Définition",
     definitionChoiceDesc: "Choisissez le bon mot parmi 6 mots à orthographe similaire d'après une définition en chinois.",
+    comingSoon: "Bientôt disponible",
     chooseCorrectSpelling: "Quel mot correspond à cette définition ?",
     preparingMaterials: "Préparation du matériel de révision…",
     distractorLoadFailed: "Échec du chargement des distracteurs. Réessayez ou changez de mode.",
@@ -2074,6 +2080,7 @@ export const translations: Record<string, TranslationSet> = {
     spellingQuizDesc: "Escreva as palavras para consolidar a memória muscular e auditiva.",
     definitionChoice: "Escolha por Definição",
     definitionChoiceDesc: "Escolha a palavra certa entre 6 com ortografia semelhante, com base numa definição em chinês.",
+    comingSoon: "Em breve",
     chooseCorrectSpelling: "Qual palavra corresponde a esta definição?",
     preparingMaterials: "Preparando material de revisão…",
     distractorLoadFailed: "Falha ao carregar distratores. Tente novamente ou troque de modo.",
