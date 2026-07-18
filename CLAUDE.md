@@ -10,6 +10,7 @@
 - 采用 6 阶段 SRS（间隔重复）算法：`[1, 2, 4, 7, 15, 30]` 天
 - 支持多语言词库（English / Japanese / Spanish / French / Portuguese）
 - 支持时间旅行（虚拟时间快进），用于触发复习演示
+- **三种复习模式**：闪卡模式 / 拼写测试 / **辨义选择**（v1.8 新增，本地词典生成干扰词）
 - 附带 FIFA 足球规则科普讲堂（17 章 2026/2027 最新规则，中英双语对照）
 - 数据持久化到 Supabase Postgres（生产）或本地 JSON 文件（开发默认）
 
@@ -20,7 +21,8 @@
 | 前端 | React 19 + Vite 6 + TailwindCSS 4 + lucide-react + motion + recharts |
 | 后端 | Express 4 + tsx（直接运行 TypeScript）|
 | 数据库 | 本地 `data/db.json`（默认）/ Supabase Postgres（生产）|
-| AI | Google Gemini（主）+ GLM Anthropic 兼容端点（兜底）|
+| AI | Google Gemini（主）+ GLM Anthropic 兼容端点（兜底）— 仅用于添加新词时的释义/例句/助记生成 |
+| 本地词典 | `data/dictionary.json`（10.4 万词，v1.8 引入）— 用于「辨义选择」复习模式生成拼写近似的干扰词 |
 | 部署 | Vercel（`vercel.json` 已配置）|
 
 ## 3. 项目结构
@@ -33,7 +35,9 @@
 │   └── serverDb.ts        # 数据库适配层（Supabase / 本地 JSON 双实现）—— ⚠️ 已内联进 api/index.ts
 ├── data/                  # 本地 JSON 数据库目录（data/*.json 已 gitignore）
 │   ├── db.json            # 本地开发数据库（默认，不入库）
-│   └── db.test.json       # E2E 测试专用数据库（playwright 启动时自动创建）
+│   ├── db.test.json       # E2E 测试专用数据库（playwright 启动时自动创建）
+│   ├── dictionary.json    # 10.4 万英汉词典（v1.8 引入，入库；辨义选择模式干扰词来源）
+│   └── 简明英汉词典.xlsx   # dictionary.json 的原始来源（用户提供）
 ├── supabase-schema.sql    # Supabase 建表 SQL
 ├── src/
 │   ├── App.tsx            # 前端主应用（路由 + 状态 + API 调用，把 user 透传给 Dashboard）
@@ -43,14 +47,17 @@
 │   │   ├── Auth.tsx       # 登录/注册（level 已移除，dailyGoal 输入修复）
 │   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导 + 管理员白名单 isPrivileged + 足球规则入口卡）
 │   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
-│   │   ├── ReviewSession.tsx  # 复习会话（错词重考 + Unicode-safe 例句挖空）
+│   │   ├── ReviewSession.tsx  # 复习会话（闪卡/拼写/辨义选择三模式 + 错词重考 + 发音防抖 + 干扰词缓存）
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
 │   │   ├── FootballRules.tsx  # ⚽ FIFA 足球规则科普讲堂（v1.7：17 章沉浸式阅读）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段）
+│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段 + 12 个辨义模式字段）
 │       ├── footballRulesData.ts  # ⚽ 17 章 FIFA 规则数据（687 行，中英双语对照，v1.7 引入）
-│       └── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
+│       ├── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
+│       └── usePronunciation.ts  # 发音 hook（v1.8：800ms 防抖 + Audio/Speech fallback）
+├── scripts/
+│   └── build-dictionary.cjs   # 一次性脚本：把 xlsx 词典转 JSON（v1.8 引入）
 ├── tests/
 │   ├── unit/                 # 单元测试（Vitest，纯函数、算法、数据映射）
 │   │   ├── srs-algorithm.test.ts
