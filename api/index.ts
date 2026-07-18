@@ -947,6 +947,155 @@ if (isGlmConfigured) {
   console.log("GLM fallback not configured (fill GLM_API_KEY in .env.local to enable).");
 }
 
+// ==========================================
+// 本地英汉词典（用于「辨义选择」复习模式的干扰词生成）
+// 启动时一次性加载 data/dictionary.json 到内存
+// ==========================================
+interface DictEntry { w: string; d: string; }
+let dictionary: DictEntry[] = [];
+let dictByLength: Map<number, DictEntry[]> = new Map(); // 按长度索引，加速相似词查询
+let dictionaryLoaded = false;
+
+function loadDictionary() {
+  if (dictionaryLoaded) return;
+  const dictPath = path.join(process.cwd(), "data", "dictionary.json");
+  try {
+    if (!fs.existsSync(dictPath)) {
+      console.warn(`[Dictionary] File not found: ${dictPath}. Definition Choice mode will be disabled.`);
+      return;
+    }
+    const raw = fs.readFileSync(dictPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error("Invalid dictionary format");
+    dictionary = parsed.filter((e: any) => e && typeof e.w === "string" && typeof e.d === "string");
+    // 按长度索引（加速相似词查询时只扫相近长度的候选）
+    dictByLength = new Map();
+    for (const entry of dictionary) {
+      const len = entry.w.length;
+      if (!dictByLength.has(len)) dictByLength.set(len, []);
+      dictByLength.get(len)!.push(entry);
+    }
+    dictionaryLoaded = true;
+    console.log(`[Dictionary] Loaded ${dictionary.length} entries from ${dictPath}`);
+  } catch (err) {
+    console.error(`[Dictionary] Failed to load:`, err);
+  }
+}
+loadDictionary();
+
+// 计算两个单词的 Levenshtein 编辑距离
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[] = new Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = Math.min(
+        dp[j] + 1,        // 删除
+        dp[j - 1] + 1,    // 插入
+        prev + (a[i - 1] === b[j - 1] ? 0 : 1) // 替换
+      );
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+
+// 综合相似度分数：编辑距离 + 长度差 + 前缀/后缀重合
+// 分数越低越相似（0 表示完全相同）
+function similarityScore(target: string, candidate: string): number {
+  const editDist = levenshtein(target, candidate);
+  const lenDiff = Math.abs(target.length - candidate.length);
+  // 前缀共享（0~min(len)）
+  let prefixShared = 0;
+  const minLen = Math.min(target.length, candidate.length);
+  for (let i = 0; i < minLen; i++) {
+    if (target[i] === candidate[i]) prefixShared++;
+    else break;
+  }
+  // 后缀共享
+  let suffixShared = 0;
+  for (let i = 1; i <= minLen; i++) {
+    if (target[target.length - i] === candidate[candidate.length - i]) suffixShared++;
+    else break;
+  }
+  // 综合：编辑距离权重最大；共享前缀/后缀越多越相似（扣分）
+  return editDist * 2 + lenDiff - prefixShared - suffixShared * 0.5;
+}
+
+// 从字典中找出拼写最相似的 N 个干扰词
+// 多层 fallback：严格匹配 → 放宽 → 移除分隔符 → 仍不足则返回少于 N 个（前端处理）
+function findSimilarWords(
+  spelling: string,
+  count: number = 5
+): { word: string; definition: string }[] {
+  if (!dictionaryLoaded || dictionary.length === 0) return [];
+  const target = spelling.trim().toLowerCase();
+
+  // 单次查询：在长度差 maxLenDelta 的候选中打分，取编辑距离 ≤ maxEdit 的 top N
+  const query = (
+    tgt: string,
+    maxLenDelta: number,
+    maxEdit: number,
+    limit: number
+  ): { word: string; definition: string }[] => {
+    const tgtLen = tgt.length;
+    const candidates: DictEntry[] = [];
+    for (let d = -maxLenDelta; d <= maxLenDelta; d++) {
+      const candLen = tgtLen + d;
+      if (candLen < 1) continue;
+      const entries = dictByLength.get(candLen);
+      if (entries) candidates.push(...entries);
+    }
+    const scored = candidates
+      .filter(e => e.w !== tgt)
+      .map(e => ({ entry: e, score: similarityScore(tgt, e.w), edit: levenshtein(tgt, e.w) }))
+      .filter(s => s.edit <= maxEdit)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, limit);
+    return scored.map(s => ({ word: s.entry.w, definition: s.entry.d }));
+  };
+
+  // 从候选池随机抽 count 个
+  const pickRandom = (
+    pool: { word: string; definition: string }[],
+    n: number
+  ): { word: string; definition: string }[] => {
+    if (pool.length <= n) return pool;
+    const copy = [...pool];
+    const picked: { word: string; definition: string }[] = [];
+    while (picked.length < n && copy.length > 0) {
+      const idx = Math.floor(Math.random() * copy.length);
+      picked.push(copy.splice(idx, 1)[0]);
+    }
+    return picked;
+  };
+
+  // 第一轮：严格匹配（长度差 ≤ 3，编辑距离 ≤ 5）
+  let pool = query(target, 3, 5, 30);
+  // 第二轮：候选不足，放宽（长度差 ≤ 5，编辑距离 ≤ 8）
+  if (pool.length < count) {
+    pool = query(target, 5, 8, 30);
+  }
+  // 第三轮：复合词场景（behind-the-meter 这种），按词组里最长的单词查
+  // 例如 "behind-the-meter" → 取 "behind" 作为目标
+  if (pool.length < count && /[-\s]/.test(target)) {
+    const parts = target.split(/[-\s]/).filter(p => p.length >= 3);
+    if (parts.length > 0) {
+      // 取最长的部分
+      const longest = parts.reduce((a, b) => a.length >= b.length ? a : b);
+      pool = query(longest, 3, 5, 30);
+    }
+  }
+
+  return pickRandom(pool, count);
+}
+
 // User and Session interfaces
 interface User {
   id: string;
@@ -1147,119 +1296,7 @@ Return ONLY a JSON object with exactly these keys:
   throw new Error("No AI provider available (neither Gemini nor GLM configured or all failed)");
 }
 
-// 为「辨义选择」复习模式生成拼写近似的干扰单词（返回 5 个真实英文/目标语单词）
-// 同时为每个干扰词附带简短中文释义，供答题结束后的"全部释义"展示
-async function generateDistractorWords(
-  spelling: string,
-  correctDefinition: string,
-  targetLanguage: string = "English"
-): Promise<{ word: string; definition: string }[]> {
-  const prompt = `You are designing a multiple-choice vocabulary quiz for ${targetLanguage} learners.
-The correct word is: "${spelling}"
-Its Chinese definition is: "${correctDefinition}"
-
-Generate exactly 5 PLAUSIBLE but INCORRECT ${targetLanguage} words as distractors. Requirements:
-1. Each distractor must be a REAL ${targetLanguage} word (not made up).
-2. Spelling must be highly similar to "${spelling}" (e.g. share a prefix/suffix/root, or have small edit distance 2-5). Examples: resilience → resilient / reminiscence / residence / resonance / insignificance.
-3. Each distractor's meaning must be CLEARLY DIFFERENT from the correct definition, but plausible enough to challenge a learner.
-4. Mix difficulty: 2 easy confusable + 2 medium + 1 harder.
-5. Provide a SHORT Chinese definition for each distractor.
-
-Return ONLY a JSON object: {"distractors": [{"word": "...", "definition": "..."}, ...]}`;
-
-  // ----- Try Gemini first -----
-  if (ai) {
-    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
-    for (const model of modelsToTry) {
-      try {
-        console.log(`[AI Distractor] Generating for "${spelling}" via Gemini ${model}`);
-        const response = await ai.models.generateContent({
-          model: model,
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                distractors: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      word: { type: Type.STRING },
-                      definition: { type: Type.STRING }
-                    },
-                    required: ["word", "definition"]
-                  }
-                }
-              },
-              required: ["distractors"]
-            }
-          }
-        });
-
-        const parsed = JSON.parse(response.text?.trim() || "{}");
-        const list = Array.isArray(parsed.distractors) ? parsed.distractors : [];
-        if (list.length === 5) {
-          console.log(`[AI Distractor] Success via Gemini ${model}`);
-          return list.map((d: any) => ({
-            word: String(d.word || "").trim(),
-            definition: String(d.definition || "").trim()
-          })).filter((d: any) => d.word);
-        }
-        console.warn(`[AI Distractor] Gemini ${model} returned ${list.length} items, expected 5`);
-      } catch (err) {
-        console.error(`[AI Distractor] Gemini ${model} failed:`, err);
-      }
-    }
-  }
-
-  // ----- Fallback to GLM -----
-  if (isGlmConfigured) {
-    try {
-      console.log(`[AI Distractor] Trying GLM for "${spelling}"`);
-      const glmRes = await fetch(`${glmConfig.baseUrl}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": glmConfig.apiKey,
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: glmConfig.model,
-          max_tokens: 1024,
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-
-      if (!glmRes.ok) {
-        const errText = await glmRes.text();
-        throw new Error(`GLM HTTP ${glmRes.status}: ${errText}`);
-      }
-
-      const glmData: any = await glmRes.json();
-      const rawText = Array.isArray(glmData.content)
-        ? glmData.content.map((c: any) => c.text || "").join("")
-        : "";
-      const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      const parsed = JSON.parse(jsonStr || "{}");
-      const list = Array.isArray(parsed.distractors) ? parsed.distractors : [];
-      if (list.length === 5) {
-        console.log(`[AI Distractor] Success via GLM`);
-        return list.map((d: any) => ({
-          word: String(d.word || "").trim(),
-          definition: String(d.definition || "").trim()
-        })).filter((d: any) => d.word);
-      }
-      throw new Error(`GLM returned ${list.length} distractors, expected 5`);
-    } catch (err) {
-      console.error(`[AI Distractor] GLM failed for "${spelling}":`, err);
-      throw new Error(`Both Gemini and GLM failed: ${(err as Error).message}`);
-    }
-  }
-
-  throw new Error("No AI provider available for distractor generation");
-}
+// （原 generateDistractorWords AI 函数已废弃，改为本地词典 + 编辑距离算法 findSimilarWords）
 
 // Password hashing helper
 function hashPassword(password: string): string {
@@ -1913,13 +1950,14 @@ app.post("/api/words/:id/regenerate", authMiddleware, async (req: any, res) => {
 
 // 为「辨义选择」复习模式生成干扰词
 // 入参：{ wordId: string }。返回：{ correct: {word, definition}, distractors: [{word, definition}, ...] }
+// 干扰词来源：本地英汉词典 + 编辑距离算法（无 AI 依赖，稳定且快）
 app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
   const { wordId } = req.body;
   if (!wordId) {
     return res.status(400).json({ error: "wordId 必填" });
   }
-  if (!ai && !isGlmConfigured) {
-    return res.status(400).json({ error: "AI 服务未配置（Gemini 和 GLM 均不可用），无法生成干扰词。" });
+  if (!dictionaryLoaded) {
+    return res.status(500).json({ error: "本地词典未加载，无法生成干扰词。" });
   }
 
   try {
@@ -1929,11 +1967,14 @@ app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
       return res.status(404).json({ error: "Word not found or unauthorized" });
     }
 
-    const distractors = await generateDistractorWords(
-      word.spelling,
-      word.definition,
-      word.language || "English"
-    );
+    const distractors = findSimilarWords(word.spelling, 5);
+    if (distractors.length < 3) {
+      // 极端情况：候选词太少（生僻词或特殊复合词）
+      return res.status(500).json({
+        error: `候选干扰词不足（仅找到 ${distractors.length} 个）。建议换一个更常用的单词。`
+      });
+    }
+
     res.json({
       correct: { word: word.spelling, definition: word.definition },
       distractors
