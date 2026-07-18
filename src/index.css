@@ -6,3 +6,19 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-display: "Space Grotesk", sans-serif;
 }
+
+/* 自定义动画 utility（被 Dashboard / FootballRules 等组件使用） */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+.animate-spin-slow { animation: spin-slow 6s linear infinite; }
+
+/* 细滚动条（FootballRules 章节索引用） */
+.scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.3); border-radius: 3px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }

@@ -41,6 +41,7 @@ interface DashboardProps {
   onResetDb: () => void;
   onStartReview: () => void;
   onNavigateWords?: () => void;
+  onViewRules?: () => void;
   selectedLanguage: string;
   useTargetUi: boolean;
   user?: { email: string } | null;
@@ -96,6 +97,7 @@ export default function Dashboard({
   onResetDb,
   onStartReview,
   onNavigateWords,
+  onViewRules,
   selectedLanguage,
   useTargetUi,
   user,
@@ -216,6 +218,38 @@ export default function Dashboard({
               {t.memoryCurveExplain}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* ⚽ 国际足联足球规则科普讲堂 入口卡片 */}
+      <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 text-white rounded-3xl p-6 sm:p-7 relative overflow-hidden shadow-xl shadow-emerald-950/20">
+        {/* 抽象足球场线条装饰 */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-white"></div>
+          <div className="absolute top-1/2 left-1/2 w-40 h-40 border-4 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+        </div>
+        <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-emerald-200 border border-white/10">
+              <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-spin-slow" />
+              <span>{t.footballEntryBadge}</span>
+            </div>
+            <h2 className="font-display font-bold text-xl sm:text-2xl tracking-tight leading-tight">
+              {t.footballEntryTitle}
+            </h2>
+            <p className="text-emerald-100/80 text-xs sm:text-sm font-light leading-relaxed">
+              {t.footballEntryDesc}
+            </p>
+          </div>
+          <button
+            onClick={() => onViewRules && onViewRules()}
+            className="self-start md:self-center shrink-0 px-5 py-2.5 bg-white text-emerald-900 hover:bg-emerald-50 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-2"
+          >
+            {t.footballEntryCta}
+            <ArrowRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

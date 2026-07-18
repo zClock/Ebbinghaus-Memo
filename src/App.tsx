@@ -5,6 +5,7 @@ import WordList from "./components/WordList";
 import ReviewSession from "./components/ReviewSession";
 import Auth from "./components/Auth";
 import Profile from "./components/Profile";
+import FootballRules from "./components/FootballRules";
 import { BookOpen, GraduationCap, RefreshCw, AlertCircle } from "lucide-react";
 import { getTranslation } from "./lib/translations";
 
@@ -45,7 +46,7 @@ export default function App() {
     return localStorage.getItem("ebbinghaus_use_target_ui") === "true";
   });
   
-  const [currentView, setCurrentView] = useState<"dashboard" | "review" | "library" | "profile">("dashboard");
+  const [currentView, setCurrentView] = useState<"dashboard" | "review" | "library" | "profile" | "rules">("dashboard");
   const [words, setWords] = useState<Word[]>([]);
   const [dueWords, setDueWords] = useState<Word[]>([]);
   const [histories, setHistories] = useState<any[]>([]);
@@ -524,6 +525,7 @@ export default function App() {
                 onResetDb={handleResetDb}
                 onStartReview={() => setCurrentView("review")}
                 onNavigateWords={() => setCurrentView("library")}
+                onViewRules={() => setCurrentView("rules")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
                 user={user}
@@ -583,6 +585,14 @@ export default function App() {
                 stats={stats}
                 onProfileUpdate={(updated) => setUser(updated)}
                 onLogout={handleLogout}
+                selectedLanguage={selectedLanguage}
+                useTargetUi={useTargetUi}
+              />
+            )}
+
+            {currentView === "rules" && (
+              <FootballRules
+                onBackToDashboard={() => setCurrentView("dashboard")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
               />
