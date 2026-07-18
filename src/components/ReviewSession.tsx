@@ -495,10 +495,6 @@ export default function ReviewSession({
             </button>
           </div>
 
-          {reviewMode === "definition" && (
-            <p className="text-[11px] text-slate-400 font-light">{t.switchModeHint}</p>
-          )}
-
           <div className="flex gap-3 justify-center pt-2">
             <button
               id="btn-start-review-session"
