@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { getTranslation } from "../lib/translations";
+import { usePronunciation } from "../lib/usePronunciation";
 import { markIncorrect, markCorrect } from "../lib/reviewQueue";
 
 interface Word {
@@ -114,37 +115,14 @@ export default function ReviewSession({
     }
   }, [isSessionStarted, reviewMode, currentIndex, roundNumber, isSpellingSubmitted]);
 
-  // Audio playing
-  const playSound = (word: Word) => {
-    if (word.audioUrl) {
-      const audio = new Audio(word.audioUrl);
-      audio.play().catch(err => {
-        console.warn("Audio element error, falling back to Web Speech", err);
-        speakFallback(word.spelling);
-      });
-    } else {
-      speakFallback(word.spelling);
-    }
-  };
-
-  const speakFallback = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (selectedLanguage === "Japanese") utterance.lang = 'ja-JP';
-      else if (selectedLanguage === "Spanish") utterance.lang = 'es-ES';
-      else if (selectedLanguage === "French") utterance.lang = 'fr-FR';
-      else if (selectedLanguage === "Portuguese") utterance.lang = 'pt-PT';
-      else utterance.lang = 'en-US';
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+  // 发音：800ms 内同一单词的连续点击视为一次（避免快速连点重复发音）
+  const { play: playSound } = usePronunciation(selectedLanguage);
 
   // Play audio automatically when a card appears (excellent user experience)
   useEffect(() => {
     if (isSessionStarted && currentWord && !isSessionFinished) {
       if (reviewMode === "flashcard") {
-        playSound(currentWord);
+        playSound(currentWord.spelling, { audioUrl: currentWord.audioUrl });
       }
     }
   }, [currentIndex, roundNumber, isSessionStarted]);
@@ -190,7 +168,7 @@ export default function ReviewSession({
     setIsSpellingCorrect(isCorrect);
     setIsSpellingSubmitted(true);
     setIsAnswerRevealed(true);
-    playSound(currentWord);
+    playSound(currentWord.spelling, { audioUrl: currentWord.audioUrl });
 
     const wordId = currentWord.id;
 
@@ -426,7 +404,7 @@ export default function ReviewSession({
                           {currentWord.spelling}
                         </h3>
                         <button
-                          onClick={() => playSound(currentWord)}
+                          onClick={() => playSound(currentWord.spelling, { audioUrl: currentWord.audioUrl })}
                           className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
                         >
                           <Volume2 className="w-4 h-4" />
@@ -497,7 +475,7 @@ export default function ReviewSession({
                             <span className="text-sm font-mono font-bold text-slate-500">{currentWord.phonetic || "/-/"}</span>
                           </div>
                           <button
-                            onClick={() => playSound(currentWord)}
+                            onClick={() => playSound(currentWord.spelling, { audioUrl: currentWord.audioUrl })}
                             title={t.listenPronunciation}
                             className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors cursor-pointer"
                           >

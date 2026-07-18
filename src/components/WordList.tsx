@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { getTranslation } from "../lib/translations";
+import { usePronunciation } from "../lib/usePronunciation";
 
 interface Word {
   id: string;
@@ -111,31 +112,8 @@ export default function WordList({
   const [editExampleTrans, setEditExampleTrans] = useState("");
   const [editMnemonic, setEditMnemonic] = useState("");
 
-  // Speech Synthesis fallback function
-  const playSound = (word: Word) => {
-    if (word.audioUrl) {
-      const audio = new Audio(word.audioUrl);
-      audio.play().catch(err => {
-        console.warn("HTML5 Audio failed, falling back to Web Speech Synthesis:", err);
-        speakFallback(word.spelling);
-      });
-    } else {
-      speakFallback(word.spelling);
-    }
-  };
-
-  const speakFallback = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (selectedLanguage === "Japanese") utterance.lang = 'ja-JP';
-      else if (selectedLanguage === "Spanish") utterance.lang = 'es-ES';
-      else if (selectedLanguage === "French") utterance.lang = 'fr-FR';
-      else if (selectedLanguage === "Portuguese") utterance.lang = 'pt-PT';
-      else utterance.lang = 'en-US';
-      utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+  // 发音：800ms 内同一单词的连续点击视为一次（避免快速连点重复发音）
+  const { play: playSound } = usePronunciation(selectedLanguage);
 
   const handleAddSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1176,7 +1154,7 @@ export default function WordList({
                     {selectedWord.spelling}
                   </h2>
                   <button
-                    onClick={() => playSound(selectedWord)}
+                    onClick={() => playSound(selectedWord.spelling, { audioUrl: selectedWord.audioUrl })}
                     title={t.listenPronunciation}
                     className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all cursor-pointer"
                   >
