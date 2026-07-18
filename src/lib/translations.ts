@@ -142,6 +142,9 @@ export interface TranslationSet {
   correctAnswer: string;
   allWordDefinitions: string;
   switchModeHint: string;
+  retryBtn: string;
+  switchToFlashcard: string;
+  exitSession: string;
   launchSession: string;
   back: string;
   roundNumber: string;
@@ -454,6 +457,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "正确答案",
     allWordDefinitions: "全部单词释义",
     switchModeHint: "提示：辨义选择模式需要 AI 服务支持。",
+    retryBtn: "重试",
+    switchToFlashcard: "切回闪卡",
+    exitSession: "退出会话",
     launchSession: "启动复习会话",
     back: "返回",
     roundNumber: "复习轮次 #{round}",
@@ -823,6 +829,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "Correct answer",
     allWordDefinitions: "All word definitions",
     switchModeHint: "Tip: Definition Choice mode requires AI service.",
+    retryBtn: "Retry",
+    switchToFlashcard: "Switch to Flashcard",
+    exitSession: "Exit Session",
     launchSession: "Launch Review Session",
     back: "Back",
     roundNumber: "Round #{round}",
@@ -1133,6 +1142,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "正解",
     allWordDefinitions: "全単語の訳義",
     switchModeHint: "ヒント：訳義選択モードには AI サービスが必要です。",
+    retryBtn: "再試行",
+    switchToFlashcard: "フラッシュカードへ切り替え",
+    exitSession: "セッションを終了",
     launchSession: "復習セッションを起動",
     back: "戻る",
     roundNumber: "復習ラウンド #{round}",
@@ -1443,6 +1455,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "Respuesta correcta",
     allWordDefinitions: "Definiciones de todas las palabras",
     switchModeHint: "Consejo: el modo Elección por Definición requiere servicio de IA.",
+    retryBtn: "Reintentar",
+    switchToFlashcard: "Cambiar a Tarjeta",
+    exitSession: "Salir de la sesión",
     launchSession: "Iniciar sesión de repaso",
     back: "Atrás",
     roundNumber: "Ronda #{round}",
@@ -1753,6 +1768,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "Bonne réponse",
     allWordDefinitions: "Définitions de tous les mots",
     switchModeHint: "Astuce : le mode Choix par Définition nécessite un service d'IA.",
+    retryBtn: "Réessayer",
+    switchToFlashcard: "Mode Flashcard",
+    exitSession: "Quitter la session",
     launchSession: "Démarrer la session de révision",
     back: "Retour",
     roundNumber: "Round #{round}",
@@ -2063,6 +2081,9 @@ export const translations: Record<string, TranslationSet> = {
     correctAnswer: "Resposta correta",
     allWordDefinitions: "Definições de todas as palavras",
     switchModeHint: "Dica: o modo Escolha por Definição requer serviço de IA.",
+    retryBtn: "Tentar novamente",
+    switchToFlashcard: "Mudar para Cartão",
+    exitSession: "Sair da sessão",
     launchSession: "Iniciar sessão de revisão",
     back: "Voltar",
     roundNumber: "Rodada #{round}",

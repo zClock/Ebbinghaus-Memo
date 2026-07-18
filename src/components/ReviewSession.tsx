@@ -100,6 +100,7 @@ export default function ReviewSession({
   // 工具函数：fetch /api/generate-distractors
   const fetchDistractors = async (wordId: string, word: Word) => {
     const token = localStorage.getItem("ebbinghaus_token");
+    console.log("[Definition Mode] fetchDistractors start for", wordId, word.spelling);
     try {
       const res = await fetch("/api/generate-distractors", {
         method: "POST",
@@ -109,11 +110,13 @@ export default function ReviewSession({
         },
         body: JSON.stringify({ wordId })
       });
+      console.log("[Definition Mode] response status:", res.status, res.ok);
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
+      console.log("[Definition Mode] got data, distractors count:", data.distractors?.length);
       setDistractorCache(prev => ({ ...prev, [wordId]: { correct: data.correct, distractors: data.distractors } }));
       return data;
     } catch (err: any) {
@@ -138,17 +141,31 @@ export default function ReviewSession({
   };
 
   // 预加载：把指定 wordId 加入队列（未在缓存且未在加载中才请求）
-  const preloadDistractors = (wordIds: string[]) => {
+  // force=true 时跳过 failedIds 检查（用于"重试"按钮）
+  // wordsHint 可选：显式传入 word 对象（避免闭包里 dueWords/activeQueue 是旧值导致找不到 word）
+  const preloadDistractors = (
+    wordIds: string[],
+    force: boolean = false,
+    wordsHint?: Word[]
+  ) => {
     const token = localStorage.getItem("ebbinghaus_token");
     if (!token) return;
     wordIds.forEach(wid => {
-      if (distractorCache[wid] || loadingIds.has(wid) || failedIds.has(wid) || prefetchedIdsRef.current.has(wid)) return;
-      const word = dueWords.find(w => w.id === wid) || activeQueue.find(w => w.id === wid);
-      if (!word) return;
+      if (distractorCache[wid] || loadingIds.has(wid) || prefetchedIdsRef.current.has(wid)) return;
+      if (!force && failedIds.has(wid)) return;
+      const word = wordsHint?.find(w => w.id === wid)
+        || dueWords.find(w => w.id === wid)
+        || activeQueue.find(w => w.id === wid);
+      if (!word) {
+        console.warn("[Definition Mode] preloadDistractors: word not found for", wid);
+        return;
+      }
       prefetchedIdsRef.current.add(wid);
       setLoadingIds(prev => new Set(prev).add(wid));
+      console.log("[Definition Mode] calling fetchDistractors for", wid, word.spelling);
       fetchDistractors(wid, word)
-        .catch(() => {/* 错误已通过 setFailedIds 标记 */})
+        .then(() => console.log("[Definition Mode] prefetch OK for", wid))
+        .catch((err) => console.error("[Definition Mode] prefetch FAILED for", wid, err))
         .finally(() => {
           setLoadingIds(prev => { const n = new Set(prev); n.delete(wid); return n; });
         });
@@ -185,7 +202,8 @@ export default function ReviewSession({
     if (reviewMode === "definition") {
       setIsInitialPreparing(true);
       const firstThree = dueWords.slice(0, 3).map(w => w.id);
-      preloadDistractors(firstThree);
+      // 显式传入 dueWords，避免 setState 还没 re-render 时闭包里 dueWords 是旧值
+      preloadDistractors(firstThree, false, dueWords);
     }
   };
 
@@ -227,10 +245,13 @@ export default function ReviewSession({
     if (!isSessionStarted || reviewMode !== "definition" || !currentWord || isSessionFinished) return;
 
     // 只在尚未为当前词构造过 options 时才构造（避免缓存更新触发再次 shuffle）
+    // 注意：错题重考时，同一 wordId 会再次出现——必须让用户重新做题，所以这里
+    // 用 currentIndex/roundNumber 作为复合身份，避免"上次已构造"的误判。
+    const optionKey = `${currentWord.id}#${roundNumber}#${currentIndex}`;
     const cached = distractorCache[currentWord.id];
-    if (cached && optionsBuiltForRef.current !== currentWord.id) {
+    if (cached && optionsBuiltForRef.current !== optionKey) {
       setDefinitionOptions(buildOptions(cached));
-      optionsBuiltForRef.current = currentWord.id;
+      optionsBuiltForRef.current = optionKey;
       // 第一题缓存就绪，关闭全局初始 loading
       if (currentIndex === 0 && roundNumber === 1) {
         setIsInitialPreparing(false);
@@ -238,8 +259,10 @@ export default function ReviewSession({
     }
 
     // 预加载后续 3 个词
-    const upcoming = activeQueue.slice(currentIndex + 1, currentIndex + 4).map(w => w.id);
-    if (upcoming.length > 0) preloadDistractors(upcoming);
+    const upcoming = activeQueue.slice(currentIndex + 1, currentIndex + 4);
+    if (upcoming.length > 0) {
+      preloadDistractors(upcoming.map(w => w.id), false, upcoming);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, roundNumber, isSessionStarted, reviewMode, currentWord?.id, distractorCache]);
 
@@ -785,11 +808,49 @@ export default function ReviewSession({
                         </div>
                       )}
 
-                      {/* 加载失败提示 */}
+                      {/* 加载失败提示 + 恢复路径（重试 / 切换闪卡 / 退出会话） */}
                       {failedIds.has(currentWord.id) && definitionOptions.length === 0 && (
-                        <div className="flex items-start gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100 text-xs text-rose-700">
-                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span>{t.distractorLoadFailed}</span>
+                        <div className="space-y-3 animate-fade-in">
+                          <div className="flex items-start gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100 text-xs text-rose-700">
+                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                            <span>{t.distractorLoadFailed}</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                              onClick={() => {
+                                // 清除失败标记，重新触发预加载（force=true 绕过同步 state 检查）
+                                setFailedIds(prev => { const n = new Set(prev); n.delete(currentWord.id); return n; });
+                                prefetchedIdsRef.current.delete(currentWord.id);
+                                preloadDistractors([currentWord.id], true);
+                              }}
+                              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 inline mr-1" />
+                              {t.retryBtn}
+                            </button>
+                            <button
+                              onClick={() => {
+                                // 切到闪卡模式：复用现有 queue，继续当前词
+                                setReviewMode("flashcard");
+                                setIsInitialPreparing(false);
+                                setFailedIds(new Set());
+                                setDefinitionOptions([]);
+                                setDefinitionAnswered(false);
+                                setDefinitionSelected(null);
+                                optionsBuiltForRef.current = null;
+                              }}
+                              className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5 inline mr-1" />
+                              {t.switchToFlashcard}
+                            </button>
+                            <button
+                              onClick={onClose}
+                              className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                            >
+                              {t.exitSession}
+                            </button>
+                          </div>
                         </div>
                       )}
 
