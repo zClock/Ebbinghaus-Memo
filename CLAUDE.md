@@ -22,7 +22,7 @@
 | 后端 | Express 4 + tsx（直接运行 TypeScript）|
 | 数据库 | 本地 `data/db.json`（默认）/ Supabase Postgres（生产）|
 | AI | Google Gemini（主）+ GLM Anthropic 兼容端点（兜底）— 仅用于添加新词时的释义/例句/助记生成 |
-| 本地词典 | `data/dictionary.json`（10.4 万词，v1.8 引入）— 用于「辨义选择」复习模式生成拼写近似的干扰词 |
+| 本地词典 | `data/dictionary.json`（10.4 万英汉词典，v1.8 引入）+ `data/dictionary-jp.json`（1.27 万中日词典，v1.8 引入）— 用于「辨义选择」复习模式生成拼写近似的干扰词，按 word.language 自动路由 |
 | 部署 | Vercel（`vercel.json` 已配置）|
 
 ## 3. 项目结构
@@ -36,7 +36,8 @@
 ├── data/                  # 本地 JSON 数据库目录（data/*.json 已 gitignore）
 │   ├── db.json            # 本地开发数据库（默认，不入库）
 │   ├── db.test.json       # E2E 测试专用数据库（playwright 启动时自动创建）
-│   ├── dictionary.json    # 10.4 万英汉词典（v1.8 引入，入库；辨义选择模式干扰词来源）
+│   ├── dictionary.json    # 10.4 万英汉词典（v1.8 引入，入库；辨义选择模式英语干扰词来源）
+│   ├── dictionary-jp.json # 1.27 万中日词典（v1.8 引入，入库；辨义选择模式日语干扰词来源）
 │   └── 简明英汉词典.xlsx   # dictionary.json 的原始来源（用户提供）
 ├── supabase-schema.sql    # Supabase 建表 SQL
 ├── src/

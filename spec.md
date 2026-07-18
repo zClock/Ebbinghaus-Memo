@@ -235,13 +235,19 @@
 辨义选择模式不再依赖 AI 生成干扰词，改为**纯本地算法**：
 
 ### 数据源
-- `data/简明英汉词典.xlsx`（3.8MB，用户提供的原始词典）
-- `data/dictionary.json`（5.6MB，10.4 万单词 × 中文释义，build 脚本产物）
+辨义选择模式支持**两种目标语言**，按 `word.language` 自动路由：
+
+| 语言 | 词典文件 | 条目数 | 格式 |
+|---|---|---|---|
+| English（默认） | `data/dictionary.json` | 10.4 万 | `[{w, d}, ...]` 数组 |
+| Japanese | `data/dictionary-jp.json` | 1.27 万 | `{"日语词": "中文释义"}` object（启动时转成数组） |
+
+- `data/简明英汉词典.xlsx`（3.8MB，用户提供的英汉原始词典）
 - 预处理脚本：[scripts/build-dictionary.cjs](file:///scripts/build-dictionary.cjs)
-- 服务端启动时一次性加载到内存，按单词长度建立索引（`Map<length, DictEntry[]>`）
+- 服务端启动时一次性加载两个词典到内存，分别按单词长度建立索引（`Map<length, DictEntry[]>`）
 
 ### 算法
-入口：`findSimilarWords(spelling, count=5)`（[api/index.ts](file:///api/index.ts)）
+**英语** 入口：`findSimilarWords(spelling, count=5)`（[api/index.ts](file:///api/index.ts)）
 
 **三层 fallback**：
 1. **严格匹配**：长度差 ≤ 3，编辑距离 ≤ 5，按综合分数排序取 top 30
@@ -251,6 +257,18 @@
 **综合相似度分数**：`score = editDist * 2 + lenDiff - prefixShared - suffixShared * 0.5`（分数越低越相似）
 
 **随机性**：从 top 30 候选中**随机抽 5 个**，保证同一词每次出现的干扰项不同
+
+**日语** 入口：`findSimilarJapaneseWords(spelling, count=5)`
+
+跟英语算法相同，但阈值更严格（日语字符更少，1-2 字符差异已经很大）：
+1. **严格匹配**：长度差 ≤ 2，编辑距离 ≤ 3
+2. **放宽匹配**：长度差 ≤ 3，编辑距离 ≤ 5
+3. **复合动词 fallback**（仍不足且单词 ≥ 4 字符）：去除最后一个字符重查（如 `押し出す` → `押し出`）
+
+**实测质量**（v1.8 上线验证）：
+- `食べる` → 食べます、述べる、ばてる、食料品...（前缀/字形相似）
+- `学校` → 学年、学会、学術、転校...（共享「学」字）
+- `先生` → 先日、先着、先代、先々...（共享「先」字）
 
 ### 性能 vs 原 AI 方案
 | 指标 | 原 AI 方案（Gemini+GLM） | 本地算法 |

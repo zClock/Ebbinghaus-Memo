@@ -983,6 +983,47 @@ function loadDictionary() {
 }
 loadDictionary();
 
+// ==========================================
+// 本地中日词典（用于「辨义选择」日语复习模式）
+// 启动时一次性加载 data/dictionary-jp.json 到内存
+// 文件格式：{ "日语词": "（假名）音调【词性】中文释义" }（object，非 array）
+// ==========================================
+let jpDictionary: DictEntry[] = [];
+let jpDictByLength: Map<number, DictEntry[]> = new Map();
+let jpDictionaryLoaded = false;
+
+function loadJapaneseDictionary() {
+  if (jpDictionaryLoaded) return;
+  const dictPath = path.join(process.cwd(), "data", "dictionary-jp.json");
+  try {
+    if (!fs.existsSync(dictPath)) {
+      console.warn(`[JP Dictionary] File not found: ${dictPath}. Japanese Definition Choice mode will be disabled.`);
+      return;
+    }
+    const raw = fs.readFileSync(dictPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid JP dictionary format (expected object)");
+    }
+    // 转成数组：{key: value} → [{w: key, d: value}]
+    jpDictionary = Object.entries(parsed)
+      .filter(([k, v]) => typeof k === "string" && typeof v === "string" && k.length > 0)
+      .map(([k, v]) => ({ w: k, d: v as string }));
+    // 按长度索引
+    jpDictByLength = new Map();
+    for (const entry of jpDictionary) {
+      const len = entry.w.length;
+      if (!jpDictByLength.has(len)) jpDictByLength.set(len, []);
+      jpDictByLength.get(len)!.push(entry);
+    }
+    jpDictionaryLoaded = true;
+    console.log(`[JP Dictionary] Loaded ${jpDictionary.length} entries from ${dictPath}`);
+  } catch (err) {
+    console.error(`[JP Dictionary] Failed to load:`, err);
+  }
+}
+loadJapaneseDictionary();
+
 // 计算两个单词的 Levenshtein 编辑距离
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -1090,6 +1131,71 @@ function findSimilarWords(
       // 取最长的部分
       const longest = parts.reduce((a, b) => a.length >= b.length ? a : b);
       pool = query(longest, 3, 5, 30);
+    }
+  }
+
+  return pickRandom(pool, count);
+}
+
+// 从中日词典中找出拼写最相似的 N 个日语干扰词
+// 算法跟英文版相同，但编辑距离阈值放宽（日语单词字符更少）
+function findSimilarJapaneseWords(
+  spelling: string,
+  count: number = 5
+): { word: string; definition: string }[] {
+  if (!jpDictionaryLoaded || jpDictionary.length === 0) return [];
+  const target = spelling.trim();
+
+  const query = (
+    tgt: string,
+    maxLenDelta: number,
+    maxEdit: number,
+    limit: number
+  ): { word: string; definition: string }[] => {
+    const tgtLen = tgt.length;
+    const candidates: DictEntry[] = [];
+    for (let d = -maxLenDelta; d <= maxLenDelta; d++) {
+      const candLen = tgtLen + d;
+      if (candLen < 1) continue;
+      const entries = jpDictByLength.get(candLen);
+      if (entries) candidates.push(...entries);
+    }
+    const scored = candidates
+      .filter(e => e.w !== tgt)
+      .map(e => ({ entry: e, score: similarityScore(tgt, e.w), edit: levenshtein(tgt, e.w) }))
+      .filter(s => s.edit <= maxEdit)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, limit);
+    return scored.map(s => ({ word: s.entry.w, definition: s.entry.d }));
+  };
+
+  const pickRandom = (
+    pool: { word: string; definition: string }[],
+    n: number
+  ): { word: string; definition: string }[] => {
+    if (pool.length <= n) return pool;
+    const copy = [...pool];
+    const picked: { word: string; definition: string }[] = [];
+    while (picked.length < n && copy.length > 0) {
+      const idx = Math.floor(Math.random() * copy.length);
+      picked.push(copy.splice(idx, 1)[0]);
+    }
+    return picked;
+  };
+
+  // 第一轮：严格匹配（长度差 ≤ 2，编辑距离 ≤ 3）
+  let pool = query(target, 2, 3, 30);
+  // 第二轮：放宽（长度差 ≤ 3，编辑距离 ≤ 5）
+  if (pool.length < count) {
+    pool = query(target, 3, 5, 30);
+  }
+  // 第三轮：复合动词（如 "食べ始める"），取词干部分查
+  // 日语复合词通常无空格/连字符，这里用「去除常见后缀」策略
+  if (pool.length < count && target.length >= 4) {
+    // 去除最后一个字符重查（如 "押し出す" → "押し出"）
+    const stem = target.slice(0, -1);
+    if (stem.length >= 3) {
+      pool = query(stem, 2, 3, 30);
     }
   }
 
@@ -1950,14 +2056,13 @@ app.post("/api/words/:id/regenerate", authMiddleware, async (req: any, res) => {
 
 // 为「辨义选择」复习模式生成干扰词
 // 入参：{ wordId: string }。返回：{ correct: {word, definition}, distractors: [{word, definition}, ...] }
-// 干扰词来源：本地英汉词典 + 编辑距离算法（无 AI 依赖，稳定且快）
+// 干扰词来源：根据 word.language 选择对应本地词典
+//   - Japanese → 中日词典（dictionary-jp.json）
+//   - 其他 → 英汉词典（dictionary.json）
 app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
   const { wordId } = req.body;
   if (!wordId) {
     return res.status(400).json({ error: "wordId 必填" });
-  }
-  if (!dictionaryLoaded) {
-    return res.status(500).json({ error: "本地词典未加载，无法生成干扰词。" });
   }
 
   try {
@@ -1967,7 +2072,21 @@ app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
       return res.status(404).json({ error: "Word not found or unauthorized" });
     }
 
-    const distractors = findSimilarWords(word.spelling, 5);
+    // 根据 word.language 路由到对应词典
+    const isJapanese = word.language === "Japanese";
+    const dictLoaded = isJapanese ? jpDictionaryLoaded : dictionaryLoaded;
+    if (!dictLoaded) {
+      return res.status(500).json({
+        error: isJapanese
+          ? "中日词典未加载，无法生成日语干扰词。"
+          : "本地词典未加载，无法生成干扰词。"
+      });
+    }
+
+    const distractors = isJapanese
+      ? findSimilarJapaneseWords(word.spelling, 5)
+      : findSimilarWords(word.spelling, 5);
+
     if (distractors.length < 3) {
       // 极端情况：候选词太少（生僻词或特殊复合词）
       return res.status(500).json({
