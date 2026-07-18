@@ -54,7 +54,7 @@ export default function ReviewSession({
   const t = getTranslation(selectedLanguage, useTargetUi);
 
   // Config states
-  const [reviewMode, setReviewMode] = useState<"flashcard" | "spelling">("flashcard");
+  const [reviewMode, setReviewMode] = useState<"flashcard" | "spelling" | "definition">("flashcard");
   const [isSessionStarted, setIsSessionStarted] = useState(false);
 
   // Queue states
@@ -78,6 +78,79 @@ export default function ReviewSession({
 
   const spellingInputRef = useRef<HTMLInputElement>(null);
 
+  // 辨义选择模式（definition）专属状态
+  // distractorCache: wordId → { correct, distractors }（首次生成后缓存，错题重考时复用）
+  const [distractorCache, setDistractorCache] = useState<Record<string, { correct: { word: string; definition: string }; distractors: { word: string; definition: string }[] }>>({});
+  // loadingIds: 正在请求 AI 的 wordId 集合（用于显示 loading 提示）
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
+  // failedIds: 生成失败的 wordId（用于提示错误，让用户切换模式）
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  // definitionOptions: 当前题的 6 个选项（correct + 5 distractors，随机排序）
+  const [definitionOptions, setDefinitionOptions] = useState<{ word: string; definition: string; isCorrect: boolean }[]>([]);
+  // definitionAnswered: 用户是否已选答案；definitionSelected: 选中的 word
+  const [definitionAnswered, setDefinitionAnswered] = useState(false);
+  const [definitionSelected, setDefinitionSelected] = useState<string | null>(null);
+  // 已经预加载过的 wordId 集合，避免重复请求
+  const prefetchedIdsRef = useRef<Set<string>>(new Set());
+
+  // 工具函数：fetch /api/generate-distractors
+  const fetchDistractors = async (wordId: string, word: Word) => {
+    const token = localStorage.getItem("ebbinghaus_token");
+    try {
+      const res = await fetch("/api/generate-distractors", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ wordId })
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setDistractorCache(prev => ({ ...prev, [wordId]: { correct: data.correct, distractors: data.distractors } }));
+      return data;
+    } catch (err: any) {
+      console.error("[Definition Mode] fetchDistractors failed:", err);
+      setFailedIds(prev => new Set(prev).add(wordId));
+      throw err;
+    }
+  };
+
+  // 工具函数：根据缓存构造本道题的 6 个选项（随机顺序）
+  const buildOptions = (cache: { correct: { word: string; definition: string }; distractors: { word: string; definition: string }[] }) => {
+    const opts = [
+      { word: cache.correct.word, definition: cache.correct.definition, isCorrect: true },
+      ...cache.distractors.map(d => ({ word: d.word, definition: d.definition, isCorrect: false }))
+    ];
+    // Fisher-Yates shuffle
+    for (let i = opts.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [opts[i], opts[j]] = [opts[j], opts[i]];
+    }
+    return opts;
+  };
+
+  // 预加载：把指定 wordId 加入队列（未在缓存且未在加载中才请求）
+  const preloadDistractors = (wordIds: string[]) => {
+    const token = localStorage.getItem("ebbinghaus_token");
+    if (!token) return;
+    wordIds.forEach(wid => {
+      if (distractorCache[wid] || loadingIds.has(wid) || failedIds.has(wid) || prefetchedIdsRef.current.has(wid)) return;
+      const word = dueWords.find(w => w.id === wid) || activeQueue.find(w => w.id === wid);
+      if (!word) return;
+      prefetchedIdsRef.current.add(wid);
+      setLoadingIds(prev => new Set(prev).add(wid));
+      fetchDistractors(wid, word)
+        .catch(() => {/* 错误已通过 setFailedIds 标记 */})
+        .finally(() => {
+          setLoadingIds(prev => { const n = new Set(prev); n.delete(wid); return n; });
+        });
+    });
+  };
+
   // Initialize Session
   const handleStartSession = () => {
     if (dueWords.length === 0) return;
@@ -93,6 +166,21 @@ export default function ReviewSession({
     setIsAnswerRevealed(false);
     setTypedAnswer("");
     setIsSpellingSubmitted(false);
+
+    // 辨义模式专属状态重置
+    setDistractorCache({});
+    setLoadingIds(new Set());
+    setFailedIds(new Set());
+    setDefinitionOptions([]);
+    setDefinitionAnswered(false);
+    setDefinitionSelected(null);
+    prefetchedIdsRef.current = new Set();
+
+    // 辨义模式启动时：预加载前 3 个单词的干扰词
+    if (reviewMode === "definition") {
+      const firstThree = dueWords.slice(0, 3).map(w => w.id);
+      preloadDistractors(firstThree);
+    }
   };
 
   const currentWord = activeQueue[currentIndex];
@@ -126,6 +214,22 @@ export default function ReviewSession({
       }
     }
   }, [currentIndex, roundNumber, isSessionStarted]);
+
+  // DEFINITION: 切换到新词时，如缓存已有则立即构造选项；
+  // 同时预加载后续 3 个词（保持提前量，错题轮不重复请求）
+  useEffect(() => {
+    if (!isSessionStarted || reviewMode !== "definition" || !currentWord || isSessionFinished) return;
+
+    const cached = distractorCache[currentWord.id];
+    if (cached) {
+      setDefinitionOptions(buildOptions(cached));
+    }
+
+    // 预加载后续 3 个词
+    const upcoming = activeQueue.slice(currentIndex + 1, currentIndex + 4).map(w => w.id);
+    if (upcoming.length > 0) preloadDistractors(upcoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, roundNumber, isSessionStarted, reviewMode, currentWord?.id, distractorCache]);
 
   // FLASHCARD: Submit decision
   const handleFlashcardDecision = (remembered: boolean) => {
@@ -194,11 +298,44 @@ export default function ReviewSession({
     });
   };
 
+  // DEFINITION: 用户选择一个单词后判定（不自动推进，让用户看全部释义后再点 next）
+  const handleDefinitionChoice = (selectedSpelling: string) => {
+    if (definitionAnswered) return;
+    setDefinitionSelected(selectedSpelling);
+    setDefinitionAnswered(true);
+
+    const wordId = currentWord.id;
+    const isCorrect = selectedSpelling === currentWord.spelling;
+
+    if (!isCorrect) {
+      if (!alreadyReviewedIds.has(wordId)) {
+        setFirstTryFailures(prev => {
+          const next = new Set(prev);
+          next.add(wordId);
+          return next;
+        });
+      }
+      updateIncorrectQueue(prev => markIncorrect(prev, currentWord));
+    } else {
+      updateIncorrectQueue(prev => markCorrect(prev, wordId));
+    }
+
+    setAlreadyReviewedIds(prev => {
+      const next = new Set(prev);
+      next.add(wordId);
+      return next;
+    });
+  };
+
   // Move forward in active round
   const handleAdvance = () => {
     setIsAnswerRevealed(false);
     setTypedAnswer("");
     setIsSpellingSubmitted(false);
+    // 重置辨义模式题目状态
+    setDefinitionOptions([]);
+    setDefinitionAnswered(false);
+    setDefinitionSelected(null);
 
     if (currentIndex < activeQueue.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -265,11 +402,11 @@ export default function ReviewSession({
           </div>
 
           {/* Mode Selector */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             {/* Mode A: Flashcard */}
             <button
               onClick={() => setReviewMode("flashcard")}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 reviewMode === "flashcard"
                   ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
                   : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
@@ -288,7 +425,7 @@ export default function ReviewSession({
             <button
               id="btn-mode-spelling"
               onClick={() => setReviewMode("spelling")}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 reviewMode === "spelling"
                   ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
                   : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
@@ -302,7 +439,30 @@ export default function ReviewSession({
                 {t.spellingQuizDesc}
               </p>
             </button>
+
+            {/* Mode C: Definition Choice */}
+            <button
+              id="btn-mode-definition"
+              onClick={() => setReviewMode("definition")}
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                reviewMode === "definition"
+                  ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
+                  : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <HelpCircle className={`w-5 h-5 mb-2 ${reviewMode === "definition" ? "text-indigo-200" : "text-slate-400"}`} />
+              <p className="text-xs font-bold uppercase tracking-wide">
+                {t.definitionChoice}
+              </p>
+              <p className={`text-[10px] mt-1 font-light leading-relaxed ${reviewMode === "definition" ? "text-indigo-100" : "text-slate-400"}`}>
+                {t.definitionChoiceDesc}
+              </p>
+            </button>
           </div>
+
+          {reviewMode === "definition" && (
+            <p className="text-[11px] text-slate-400 font-light">{t.switchModeHint}</p>
+          )}
 
           <div className="flex gap-3 justify-center pt-2">
             <button
@@ -592,6 +752,90 @@ export default function ReviewSession({
                     </div>
                   )}
 
+                  {/* 3. Definition Choice Mode Display */}
+                  {reviewMode === "definition" && (
+                    <div className="space-y-5 text-left animate-fade-in w-full">
+                      {/* 题干：中文释义 */}
+                      <div className="text-center pb-2 border-b border-slate-50">
+                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide">
+                          {t.chooseCorrectSpelling}
+                        </p>
+                        <p className="text-xl font-display font-extrabold text-slate-900 mt-1.5 leading-tight">
+                          {currentWord.definition}
+                        </p>
+                      </div>
+
+                      {/* 加载中提示 */}
+                      {loadingIds.has(currentWord.id) && definitionOptions.length === 0 && (
+                        <div className="flex items-center justify-center gap-2 py-6 text-slate-500 text-sm">
+                          <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+                          <span>{t.preparingMaterials}</span>
+                        </div>
+                      )}
+
+                      {/* 加载失败提示 */}
+                      {failedIds.has(currentWord.id) && definitionOptions.length === 0 && (
+                        <div className="flex items-start gap-2 p-3 bg-rose-50 rounded-xl border border-rose-100 text-xs text-rose-700">
+                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>{t.distractorLoadFailed}</span>
+                        </div>
+                      )}
+
+                      {/* 6 个选项（未答题时可点击；答题后展示对错） */}
+                      {definitionOptions.length === 6 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {definitionOptions.map(opt => {
+                            const isSelected = definitionSelected === opt.word;
+                            const showCorrect = definitionAnswered && opt.isCorrect;
+                            const showWrong = definitionAnswered && isSelected && !opt.isCorrect;
+                            return (
+                              <button
+                                key={opt.word}
+                                onClick={() => handleDefinitionChoice(opt.word)}
+                                disabled={definitionAnswered}
+                                className={`px-3 py-2.5 rounded-xl border text-sm font-mono font-semibold transition-all text-left flex items-center justify-between gap-2 ${
+                                  showCorrect
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                    : showWrong
+                                    ? "bg-rose-50 border-rose-300 text-rose-700"
+                                    : definitionAnswered
+                                    ? "bg-white border-slate-100 text-slate-400"
+                                    : "bg-white border-slate-200 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer"
+                                }`}
+                              >
+                                <span>{opt.word}</span>
+                                {showCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
+                                {showWrong && <XCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* 答题后：展示全部 6 个词的释义 */}
+                      {definitionAnswered && definitionOptions.length === 6 && (
+                        <div className="pt-3 border-t border-slate-100 space-y-2 animate-fade-in">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                            {t.allWordDefinitions}
+                          </p>
+                          {definitionOptions.map(opt => (
+                            <div
+                              key={`def-${opt.word}`}
+                              className={`flex items-start gap-2 text-xs p-2 rounded-lg ${
+                                opt.isCorrect ? "bg-emerald-50/60" : "bg-slate-50"
+                              }`}
+                            >
+                              <span className={`font-mono font-semibold shrink-0 ${opt.isCorrect ? "text-emerald-700" : "text-slate-700"}`}>
+                                {opt.word}
+                              </span>
+                              <span className="text-slate-500 font-light">— {opt.definition}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
 
                 {/* Action Decision buttons */}
@@ -622,6 +866,18 @@ export default function ReviewSession({
                   {reviewMode === "spelling" && isSpellingSubmitted && (
                     <button
                       id="btn-spelling-next"
+                      onClick={handleAdvance}
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>{t.nextBtn}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* C: Definition action bar */}
+                  {reviewMode === "definition" && definitionAnswered && (
+                    <button
+                      id="btn-definition-next"
                       onClick={handleAdvance}
                       className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
                     >

@@ -133,6 +133,15 @@ export interface TranslationSet {
   flashcardModeDesc: string;
   spellingQuiz: string;
   spellingQuizDesc: string;
+  definitionChoice: string;
+  definitionChoiceDesc: string;
+  chooseCorrectSpelling: string;
+  preparingMaterials: string;
+  distractorLoadFailed: string;
+  yourChoice: string;
+  correctAnswer: string;
+  allWordDefinitions: string;
+  switchModeHint: string;
   launchSession: string;
   back: string;
   roundNumber: string;
@@ -436,6 +445,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "卡片反转记忆，适合快速自测与释义浏览。",
     spellingQuiz: "拼写测试",
     spellingQuizDesc: "拼写键入核对，深度建立字母与音节肌肉记忆。",
+    definitionChoice: "辨义选择",
+    definitionChoiceDesc: "根据中文释义，从 6 个拼写相近的单词中选出正确答案。",
+    chooseCorrectSpelling: "下面哪个单词对应这个释义？",
+    preparingMaterials: "正在准备复习材料…",
+    distractorLoadFailed: "干扰词加载失败，请稍后重试或切换模式。",
+    yourChoice: "你的选择",
+    correctAnswer: "正确答案",
+    allWordDefinitions: "全部单词释义",
+    switchModeHint: "提示：辨义选择模式需要 AI 服务支持。",
     launchSession: "启动复习会话",
     back: "返回",
     roundNumber: "复习轮次 #{round}",
@@ -796,6 +814,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "Flip cards to browse definitions and mnemonics, great for fast self-tests.",
     spellingQuiz: "Spelling Quiz",
     spellingQuizDesc: "Type spelling manually to build deep muscular memory and letter-sound bonds.",
+    definitionChoice: "Definition Choice",
+    definitionChoiceDesc: "Pick the correct word from 6 confusable spellings based on a Chinese definition.",
+    chooseCorrectSpelling: "Which word matches this definition?",
+    preparingMaterials: "Preparing review materials…",
+    distractorLoadFailed: "Failed to load distractors. Please retry or switch mode.",
+    yourChoice: "Your choice",
+    correctAnswer: "Correct answer",
+    allWordDefinitions: "All word definitions",
+    switchModeHint: "Tip: Definition Choice mode requires AI service.",
     launchSession: "Launch Review Session",
     back: "Back",
     roundNumber: "Round #{round}",
@@ -1097,6 +1124,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "カードをめくって意味や記憶法を確認。スピーディな自習に最適です。",
     spellingQuiz: "タイピングクイズ",
     spellingQuizDesc: "実際に単語を入力して、綴りと音声を深く脳に刻み込みます。",
+    definitionChoice: "訳義選択",
+    definitionChoiceDesc: "中国語訳から、綴りの似た 6 つの単語の中から正しいものを選びます。",
+    chooseCorrectSpelling: "この訳に対応する単語はどれ？",
+    preparingMaterials: "復習材料を準備中…",
+    distractorLoadFailed: "ダミー語の読み込みに失敗しました。再試行またはモードを切り替えてください。",
+    yourChoice: "あなたの選択",
+    correctAnswer: "正解",
+    allWordDefinitions: "全単語の訳義",
+    switchModeHint: "ヒント：訳義選択モードには AI サービスが必要です。",
     launchSession: "復習セッションを起動",
     back: "戻る",
     roundNumber: "復習ラウンド #{round}",
@@ -1398,6 +1434,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "Voltee tarjetas para revisar definiciones y mnemotecnias, ideal para autoevaluaciones rápidas.",
     spellingQuiz: "Prueba de Ortografía",
     spellingQuizDesc: "Escriba las palabras para consolidar la memoria muscular y auditiva.",
+    definitionChoice: "Elección por Definición",
+    definitionChoiceDesc: "Elige la palabra correcta entre 6 con ortografía similar según la definición en chino.",
+    chooseCorrectSpelling: "¿Qué palabra corresponde a esta definición?",
+    preparingMaterials: "Preparando materiales de repaso…",
+    distractorLoadFailed: "Error al cargar distractores. Reintenta o cambia de modo.",
+    yourChoice: "Tu elección",
+    correctAnswer: "Respuesta correcta",
+    allWordDefinitions: "Definiciones de todas las palabras",
+    switchModeHint: "Consejo: el modo Elección por Definición requiere servicio de IA.",
     launchSession: "Iniciar sesión de repaso",
     back: "Atrás",
     roundNumber: "Ronda #{round}",
@@ -1699,6 +1744,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "Retournez les cartes pour voir les définitions et moyens mnémotechniques.",
     spellingQuiz: "Quiz d'Orthographe",
     spellingQuizDesc: "Saisissez les mots pour consolider la mémoire musculaire et auditive.",
+    definitionChoice: "Choix par Définition",
+    definitionChoiceDesc: "Choisissez le bon mot parmi 6 mots à orthographe similaire d'après une définition en chinois.",
+    chooseCorrectSpelling: "Quel mot correspond à cette définition ?",
+    preparingMaterials: "Préparation du matériel de révision…",
+    distractorLoadFailed: "Échec du chargement des distracteurs. Réessayez ou changez de mode.",
+    yourChoice: "Votre choix",
+    correctAnswer: "Bonne réponse",
+    allWordDefinitions: "Définitions de tous les mots",
+    switchModeHint: "Astuce : le mode Choix par Définition nécessite un service d'IA.",
     launchSession: "Démarrer la session de révision",
     back: "Retour",
     roundNumber: "Round #{round}",
@@ -2000,6 +2054,15 @@ export const translations: Record<string, TranslationSet> = {
     flashcardModeDesc: "Vire os cartões para revisar as definições e mnemônicas, ideal para autoavaliações rápidas.",
     spellingQuiz: "Quiz de Escrita",
     spellingQuizDesc: "Escreva as palavras para consolidar a memória muscular e auditiva.",
+    definitionChoice: "Escolha por Definição",
+    definitionChoiceDesc: "Escolha a palavra certa entre 6 com ortografia semelhante, com base numa definição em chinês.",
+    chooseCorrectSpelling: "Qual palavra corresponde a esta definição?",
+    preparingMaterials: "Preparando material de revisão…",
+    distractorLoadFailed: "Falha ao carregar distratores. Tente novamente ou troque de modo.",
+    yourChoice: "Sua escolha",
+    correctAnswer: "Resposta correta",
+    allWordDefinitions: "Definições de todas as palavras",
+    switchModeHint: "Dica: o modo Escolha por Definição requer serviço de IA.",
     launchSession: "Iniciar sessão de revisão",
     back: "Voltar",
     roundNumber: "Rodada #{round}",

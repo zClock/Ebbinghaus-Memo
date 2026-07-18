@@ -1147,6 +1147,120 @@ Return ONLY a JSON object with exactly these keys:
   throw new Error("No AI provider available (neither Gemini nor GLM configured or all failed)");
 }
 
+// 为「辨义选择」复习模式生成拼写近似的干扰单词（返回 5 个真实英文/目标语单词）
+// 同时为每个干扰词附带简短中文释义，供答题结束后的"全部释义"展示
+async function generateDistractorWords(
+  spelling: string,
+  correctDefinition: string,
+  targetLanguage: string = "English"
+): Promise<{ word: string; definition: string }[]> {
+  const prompt = `You are designing a multiple-choice vocabulary quiz for ${targetLanguage} learners.
+The correct word is: "${spelling}"
+Its Chinese definition is: "${correctDefinition}"
+
+Generate exactly 5 PLAUSIBLE but INCORRECT ${targetLanguage} words as distractors. Requirements:
+1. Each distractor must be a REAL ${targetLanguage} word (not made up).
+2. Spelling must be highly similar to "${spelling}" (e.g. share a prefix/suffix/root, or have small edit distance 2-5). Examples: resilience → resilient / reminiscence / residence / resonance / insignificance.
+3. Each distractor's meaning must be CLEARLY DIFFERENT from the correct definition, but plausible enough to challenge a learner.
+4. Mix difficulty: 2 easy confusable + 2 medium + 1 harder.
+5. Provide a SHORT Chinese definition for each distractor.
+
+Return ONLY a JSON object: {"distractors": [{"word": "...", "definition": "..."}, ...]}`;
+
+  // ----- Try Gemini first -----
+  if (ai) {
+    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[AI Distractor] Generating for "${spelling}" via Gemini ${model}`);
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                distractors: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING },
+                      definition: { type: Type.STRING }
+                    },
+                    required: ["word", "definition"]
+                  }
+                }
+              },
+              required: ["distractors"]
+            }
+          }
+        });
+
+        const parsed = JSON.parse(response.text?.trim() || "{}");
+        const list = Array.isArray(parsed.distractors) ? parsed.distractors : [];
+        if (list.length === 5) {
+          console.log(`[AI Distractor] Success via Gemini ${model}`);
+          return list.map((d: any) => ({
+            word: String(d.word || "").trim(),
+            definition: String(d.definition || "").trim()
+          })).filter((d: any) => d.word);
+        }
+        console.warn(`[AI Distractor] Gemini ${model} returned ${list.length} items, expected 5`);
+      } catch (err) {
+        console.error(`[AI Distractor] Gemini ${model} failed:`, err);
+      }
+    }
+  }
+
+  // ----- Fallback to GLM -----
+  if (isGlmConfigured) {
+    try {
+      console.log(`[AI Distractor] Trying GLM for "${spelling}"`);
+      const glmRes = await fetch(`${glmConfig.baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": glmConfig.apiKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: glmConfig.model,
+          max_tokens: 1024,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      if (!glmRes.ok) {
+        const errText = await glmRes.text();
+        throw new Error(`GLM HTTP ${glmRes.status}: ${errText}`);
+      }
+
+      const glmData: any = await glmRes.json();
+      const rawText = Array.isArray(glmData.content)
+        ? glmData.content.map((c: any) => c.text || "").join("")
+        : "";
+      const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const parsed = JSON.parse(jsonStr || "{}");
+      const list = Array.isArray(parsed.distractors) ? parsed.distractors : [];
+      if (list.length === 5) {
+        console.log(`[AI Distractor] Success via GLM`);
+        return list.map((d: any) => ({
+          word: String(d.word || "").trim(),
+          definition: String(d.definition || "").trim()
+        })).filter((d: any) => d.word);
+      }
+      throw new Error(`GLM returned ${list.length} distractors, expected 5`);
+    } catch (err) {
+      console.error(`[AI Distractor] GLM failed for "${spelling}":`, err);
+      throw new Error(`Both Gemini and GLM failed: ${(err as Error).message}`);
+    }
+  }
+
+  throw new Error("No AI provider available for distractor generation");
+}
+
 // Password hashing helper
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -1794,6 +1908,39 @@ app.post("/api/words/:id/regenerate", authMiddleware, async (req: any, res) => {
   } catch (err: any) {
     console.error("AI Regeneration failed:", err);
     res.status(500).json({ error: "AI 生成失败，请稍后重试。详情: " + (err.message || err) });
+  }
+});
+
+// 为「辨义选择」复习模式生成干扰词
+// 入参：{ wordId: string }。返回：{ correct: {word, definition}, distractors: [{word, definition}, ...] }
+app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
+  const { wordId } = req.body;
+  if (!wordId) {
+    return res.status(400).json({ error: "wordId 必填" });
+  }
+  if (!ai && !isGlmConfigured) {
+    return res.status(400).json({ error: "AI 服务未配置（Gemini 和 GLM 均不可用），无法生成干扰词。" });
+  }
+
+  try {
+    const words = await getUserWords(req.userId);
+    const word = words.find(w => w.id === wordId);
+    if (!word) {
+      return res.status(404).json({ error: "Word not found or unauthorized" });
+    }
+
+    const distractors = await generateDistractorWords(
+      word.spelling,
+      word.definition,
+      word.language || "English"
+    );
+    res.json({
+      correct: { word: word.spelling, definition: word.definition },
+      distractors
+    });
+  } catch (err: any) {
+    console.error("Distractor generation failed:", err);
+    res.status(500).json({ error: "干扰词生成失败：" + (err.message || err) });
   }
 });
 
