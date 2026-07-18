@@ -126,6 +126,13 @@
 
 ## 7. 已完成项目归档
 
+### v1.8.1（2026-07-18）：FootballRules 移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染
+- ✅ 修复手机端（iPhone 15 Pro 等）打开足球规则页面后看不到 14 条规则的 bug：grid 容器在手机端改为垂直堆叠 + 外层 `overflow-y-auto`,左侧章节列表 `h-[12vh]`,右侧规则正文撑开可见
+- ✅ 章节切换时自动滚回顶部（`useEffect` 监听 `activeLawId`,重置 `scrollContainerRef` + `readerPaneRef` 的 `scrollTop`）
+- ✅ bullet list 结构化渲染：新增 `renderStructuredContent()` helper,解析 `\n` 和 `- xxx` 为 `<ul><li>`
+- ✅ 正文字号从 `text-xs sm:text-sm` 改为 `text-sm sm:text-base`,手机端易读性提升
+- ✅ Vite dev server 加 `host: true`,允许手机端通过局域网 IP 真机调试
+
 ### v1.8（2026-07-18）：辨义选择复习模式 + 发音防抖 + 本地词典
 - ✅ 新增第三种复习模式「辨义选择」：题干给中文释义，6 个拼写近似词里选对的
 - ✅ 初版用 Gemini+GLM AI 生成干扰词，但因响应慢（3.5-20s）+ 偶发失败被替换
@@ -191,6 +198,7 @@
 
 ## 版本历史
 
+- **v1.6（2026-07-18）**：基于 v1.8.1 完成，归档 FootballRules 移动端响应式修复 + 滚动复位 + 结构化渲染等 5 项任务
 - **v1.5（2026-07-18）**：基于 v1.8 完成，归档辨义选择复习模式、本地词典干扰词算法、发音防抖等 8 项任务
 - **v1.4（2026-07-18）**：基于 v1.7 完成，归档新完成的 5 项足球规则移植任务
 - **v1.3（2026-07-17）**：基于 v1.6 完成情况更新——i18n 完整化、Playwright E2E 替代 vitest 集成测试、管理员白名单、favicon。重新组织"已完成项目归档"加入 v1.5 / v1.6 章节。

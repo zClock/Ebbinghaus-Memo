@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search,
   X,
@@ -34,6 +34,15 @@ export default function FootballRules({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [activeLawId, setActiveLawId] = useState<number>(1);
+
+  // Reader pane ref：切换章节时滚回顶部
+  // 桌面端：右侧 reader pane 独立滚动；手机端：外层 grid 容器滚动
+  const scrollContainerRef = useRef<HTMLDivElement>(null); // 手机端 grid 容器
+  const readerPaneRef = useRef<HTMLDivElement>(null);      // 桌面端右侧 pane
+  useEffect(() => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+    if (readerPaneRef.current) readerPaneRef.current.scrollTop = 0;
+  }, [activeLawId]);
 
   // 分类标签跟随 UI 语言（已经通过 translations.ts 完成 6 语言本地化）
   const categories = useMemo(() => {
@@ -111,8 +120,58 @@ export default function FootballRules({
     );
   };
 
+  // 将规则正文按换行拆段，识别 "- " 开头的行作为 bullet list 渲染
+  // 解决：数据中 \n 被浏览器默认合并为空格，bullet 项挤成一行的问题
+  const renderStructuredContent = (raw: string, search: string, variant: "zh" | "en") => {
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return null;
+
+    // 分组：连续的 "- " 开头归一组渲染成 <ul>，其他渲染成 <p>
+    const blocks: { type: "p" | "ul"; items: string[] }[] = [];
+    for (const line of lines) {
+      const isBullet = /^[-•]/.test(line);
+      const last = blocks[blocks.length - 1];
+      if (isBullet) {
+        // 去掉行首 "- " 或 "• "
+        const content = line.replace(/^[-•]\s*/, "");
+        if (last && last.type === "ul") {
+          last.items.push(content);
+        } else {
+          blocks.push({ type: "ul", items: [content] });
+        }
+      } else {
+        if (last && last.type === "p") {
+          last.items.push(line);
+        } else {
+          blocks.push({ type: "p", items: [line] });
+        }
+      }
+    }
+
+    return (
+      <div className={variant === "en" ? "font-serif italic text-slate-500 space-y-2.5" : "text-slate-800 space-y-2.5"}>
+        {blocks.map((blk, i) => {
+          if (blk.type === "ul") {
+            return (
+              <ul key={i} className={`list-disc ${variant === "en" ? "pl-5" : "pl-5"} space-y-1 my-1`}>
+                {blk.items.map((item, j) => (
+                  <li key={j} className="leading-relaxed">{highlightText(item, search)}</li>
+                ))}
+              </ul>
+            );
+          }
+          return (
+            <p key={i} className="leading-relaxed">
+              {highlightText(blk.items.join(" "), search)}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <div className="bg-slate-50 min-h-screen rounded-3xl overflow-hidden border border-slate-100 shadow-xl flex flex-col animate-fade-in">
+    <div className="bg-slate-50 min-h-screen rounded-3xl overflow-visible lg:overflow-hidden border border-slate-100 shadow-xl flex flex-col animate-fade-in">
 
       {/* Upper Pitch-green Banner Header */}
       <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 text-white p-6 sm:p-8 relative overflow-hidden">
@@ -174,7 +233,7 @@ export default function FootballRules({
         </div>
 
         {/* Categories Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin pr-4 snap-x">
           {categories.map((cat) => {
             const isActive = selectedCategory === cat.id;
             return (
@@ -195,10 +254,12 @@ export default function FootballRules({
       </div>
 
       {/* Main Grid: Sidebar Navigator on left, Live Reader Pane on right */}
-      <div className="flex-grow grid grid-cols-1 lg:grid-cols-12 overflow-hidden h-[600px] lg:h-[750px]">
+      {/* 移动端：两段垂直堆叠，外层可滚动；桌面端：两栏并排，固定高度 */}
+      <div ref={scrollContainerRef} className="flex-grow grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden h-[70vh] lg:h-[750px]">
 
         {/* Left Side: Chapter Navigation Index */}
-        <div className="lg:col-span-4 border-r border-slate-100 bg-white overflow-y-auto flex flex-col">
+        {/* 移动端：章节列表收缩成横向滚动条,占 12vh;桌面端：固定高度 + 独立滚动 */}
+        <div className="lg:col-span-4 border-r border-slate-100 bg-white overflow-y-auto flex flex-col h-[12vh] lg:h-full shrink-0">
           <div className="p-3.5 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <BookOpen className="w-4 h-4 text-emerald-600" />
@@ -279,7 +340,8 @@ export default function FootballRules({
         </div>
 
         {/* Right Side: Detailed Rules Reading Area */}
-        <div className="lg:col-span-8 bg-slate-50/30 overflow-y-auto flex flex-col p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* 移动端：右侧 pane 不再独立滚动，让外层 body 滚；桌面端保持原独立滚动 */}
+        <div ref={readerPaneRef} className="lg:col-span-8 bg-slate-50/30 overflow-visible lg:overflow-y-auto flex flex-col p-4 sm:p-6 lg:p-8 space-y-6">
 
           {activeLaw ? (
             <>
@@ -360,12 +422,13 @@ export default function FootballRules({
                     </div>
 
                     {/* Subsection content rendering: bilingual 中英对照；其他仅英文 */}
-                    <div className="text-xs sm:text-sm text-slate-600 leading-relaxed font-light space-y-4">
+                    {/* v1.8.1: 用 renderStructuredContent 解析 \n 换行和 bullet list，避免在手机上挤成一行 */}
+                    <div className="text-sm sm:text-base leading-relaxed font-light space-y-4">
                       {/* 中文内容（仅中文 UI 显示） */}
                       {isBilingual && (
-                        <p className="text-slate-800">
-                          {highlightText(sec.contentZh, searchQuery)}
-                        </p>
+                        <div>
+                          {renderStructuredContent(sec.contentZh, searchQuery, "zh")}
+                        </div>
                       )}
 
                       {/* 分隔线 */}
@@ -374,9 +437,9 @@ export default function FootballRules({
                       )}
 
                       {/* 英文内容（所有 UI 语言都显示） */}
-                      <p className="text-slate-500 font-serif leading-relaxed italic">
-                        {highlightText(sec.contentEn, searchQuery)}
-                      </p>
+                      <div>
+                        {renderStructuredContent(sec.contentEn, searchQuery, "en")}
+                      </div>
                     </div>
 
                   </div>
