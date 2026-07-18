@@ -476,23 +476,39 @@ export default function ReviewSession({
             </button>
 
             {/* Mode C: Definition Choice */}
-            <button
-              id="btn-mode-definition"
-              onClick={() => setReviewMode("definition")}
-              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                reviewMode === "definition"
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
-                  : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <HelpCircle className={`w-5 h-5 mb-2 ${reviewMode === "definition" ? "text-indigo-200" : "text-slate-400"}`} />
-              <p className="text-xs font-bold uppercase tracking-wide">
-                {t.definitionChoice}
-              </p>
-              <p className={`text-[10px] mt-1 font-light leading-relaxed ${reviewMode === "definition" ? "text-indigo-100" : "text-slate-400"}`}>
-                {t.definitionChoiceDesc}
-              </p>
-            </button>
+            {/* 仅 English / Japanese 支持；Spanish / French / Portuguese 显示"建设中"灰态 */}
+            {["English", "Japanese"].includes(selectedLanguage) ? (
+              <button
+                id="btn-mode-definition"
+                onClick={() => setReviewMode("definition")}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                  reviewMode === "definition"
+                    ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
+                    : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <HelpCircle className={`w-5 h-5 mb-2 ${reviewMode === "definition" ? "text-indigo-200" : "text-slate-400"}`} />
+                <p className="text-xs font-bold uppercase tracking-wide">
+                  {t.definitionChoice}
+                </p>
+                <p className={`text-[10px] mt-1 font-light leading-relaxed ${reviewMode === "definition" ? "text-indigo-100" : "text-slate-400"}`}>
+                  {t.definitionChoiceDesc}
+                </p>
+              </button>
+            ) : (
+              <div
+                className="p-3 rounded-2xl border border-slate-200/60 bg-slate-100/80 text-slate-400 cursor-not-allowed"
+                title={t.comingSoon}
+              >
+                <HelpCircle className="w-5 h-5 mb-2 text-slate-300" />
+                <p className="text-xs font-bold uppercase tracking-wide">
+                  {t.definitionChoice}
+                </p>
+                <p className="text-[10px] mt-1 font-light leading-relaxed text-slate-400">
+                  {t.comingSoon}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3 justify-center pt-2">
