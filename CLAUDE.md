@@ -29,7 +29,7 @@
 
 ```
 .
-├── server.ts              # 本地开发入口（监听 3003 端口 + Vite 中间件，PORT 可环境变量覆盖）
+├── server.ts              # 本地开发入口（监听 3003 端口 + Vite 中间件，PORT 可环境变量覆盖；v1.8.1：Vite host:true 允许手机端局域网访问）
 ├── api/
 │   ├── index.ts           # Vercel Serverless 单文件入口（全部 Express 业务逻辑内联于此，DB_PATH 支持 env 覆盖）
 │   └── serverDb.ts        # 数据库适配层（Supabase / 本地 JSON 双实现）—— ⚠️ 已内联进 api/index.ts
@@ -50,7 +50,7 @@
 │   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
 │   │   ├── ReviewSession.tsx  # 复习会话（闪卡/拼写/辨义选择三模式 + 错词重考 + 发音防抖 + 干扰词缓存）
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
-│   │   ├── FootballRules.tsx  # ⚽ FIFA 足球规则科普讲堂（v1.7：17 章沉浸式阅读）
+│   │   ├── FootballRules.tsx  # ⚽ FIFA 足球规则科普讲堂（v1.7：17 章沉浸式阅读；v1.8.1：移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
 │       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段 + 12 个辨义模式字段）
