@@ -118,13 +118,19 @@
 - [spec.md](file:///spec.md) — 功能基线
 - [plan.md](file:///plan.md) — 本文件
 
-### 6.2 🔲 README 重写
-- **现状**：[README.md](file:///README.md) 还是 AI Studio 模板，没说清本项目
-- **目标**：补充项目简介、本地启动步骤、环境变量说明、端口（3003）
+### 6.2 ✅ README 重写（v1.8.2 已完成）
+- **现状**：README.md 已从 AI Studio 模板重写为项目真实内容（简介、技术栈、本地启动、环境变量、文档导航）
 
 ---
 
 ## 7. 已完成项目归档
+
+### v1.8.2（2026-07-19）：WordList 语言筛选下空词库温和提示 + README 重写
+- ✅ WordList 顶部条件渲染琥珀色提示条：`selectedLanguage !== "All" && words.length === 0`
+- ✅ 新增 i18n key `emptyLanguageHint` × 6 种语言（zh/en/ja/es/fr/pt）
+- ✅ README.md 从 AI Studio 模板重写为项目真实内容
+- ✅ CLAUDE.md / spec.md / plan.md 同步 v1.8.2 变动
+- 背景：线上排查发现用户误切到法语筛选（localStorage 自动沿用上次 selectedLanguage）导致看不到英语词，确认数据未丢，加 UX 引导
 
 ### v1.8.1（2026-07-18）：FootballRules 移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染
 - ✅ 修复手机端（iPhone 15 Pro 等）打开足球规则页面后看不到 14 条规则的 bug：grid 容器在手机端改为垂直堆叠 + 外层 `overflow-y-auto`,左侧章节列表 `h-[12vh]`,右侧规则正文撑开可见
@@ -198,6 +204,7 @@
 
 ## 版本历史
 
+- **v1.7（2026-07-19）**：基于 v1.8.2 完成，归档 WordList 语言筛选下空词库温和提示条 + README 重写 + 四份文档同步
 - **v1.6（2026-07-18）**：基于 v1.8.1 完成，归档 FootballRules 移动端响应式修复 + 滚动复位 + 结构化渲染等 5 项任务
 - **v1.5（2026-07-18）**：基于 v1.8 完成，归档辨义选择复习模式、本地词典干扰词算法、发音防抖等 8 项任务
 - **v1.4（2026-07-18）**：基于 v1.7 完成，归档新完成的 5 项足球规则移植任务

@@ -11,6 +11,7 @@
 - 支持多语言词库（English / Japanese / Spanish / French / Portuguese）
 - 支持时间旅行（虚拟时间快进），用于触发复习演示
 - **三种复习模式**：闪卡模式 / 拼写测试 / **辨义选择**（v1.8 新增，本地词典生成干扰词）
+- **语言筛选下空词库温和提示**（v1.8.2）：切到具体目标语言但该语言下没有词时，词库页顶部显示琥珀色提示条，避免误以为数据丢失
 - 附带 FIFA 足球规则科普讲堂（17 章 2026/2027 最新规则，中英双语对照）
 - 数据持久化到 Supabase Postgres（生产）或本地 JSON 文件（开发默认）
 
@@ -47,13 +48,13 @@
 │   ├── components/
 │   │   ├── Auth.tsx       # 登录/注册（level 已移除，dailyGoal 输入修复）
 │   │   ├── Dashboard.tsx  # 首页仪表盘（统计 + 时间旅行 + 空词库引导 + 管理员白名单 isPrivileged + 足球规则入口卡）
-│   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条）
+│   │   ├── WordList.tsx   # 词库管理（增删改查 + 批量导入 + 导入进度条 + v1.8.2：语言筛选下空词库温和提示）
 │   │   ├── ReviewSession.tsx  # 复习会话（闪卡/拼写/辨义选择三模式 + 错词重考 + 发音防抖 + 干扰词缓存）
 │   │   ├── Profile.tsx    # 个人资料 + 勋章墙（level 入口已移除）
 │   │   ├── FootballRules.tsx  # ⚽ FIFA 足球规则科普讲堂（v1.7：17 章沉浸式阅读；v1.8.1：移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染）
 │   │   └── Navbar.tsx     # 顶部导航
 │   └── lib/
-│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段 + 12 个辨义模式字段）
+│       ├── translations.ts    # 多语言文案（6 种 UI 语言 × 120+ 键，含 Chinese 兜底 + 36 个 football* 字段 + 12 个辨义模式字段 + v1.8.2 emptyLanguageHint）
 │       ├── footballRulesData.ts  # ⚽ 17 章 FIFA 规则数据（687 行，中英双语对照，v1.7 引入）
 │       ├── reviewQueue.ts     # 复习队列纯函数（错词重考逻辑）
 │       └── usePronunciation.ts  # 发音 hook（v1.8：800ms 防抖 + Audio/Speech fallback）
