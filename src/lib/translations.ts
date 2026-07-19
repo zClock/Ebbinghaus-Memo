@@ -36,6 +36,7 @@ export interface TranslationSet {
   uiLangOptionTarget: string;
   noWordsDue: string;
   emptyLibraryCta: string;
+  emptyLanguageHint: string;
   perfectReview: string;
   addFirstWord: string;
   reGenerateAi: string;
@@ -355,6 +356,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "目标语言界面",
     noWordsDue: "今天没有需要复习的单词！太棒了！",
     emptyLibraryCta: "去添加我的第一个单词",
+    emptyLanguageHint: "当前筛选的是「{lang}」语言，该语言下还没有单词。现在就去添加吧。",
     // ⚽ 足球规则讲堂
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ 国际足联足球规则科普讲堂",
@@ -668,6 +670,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "English UI",
     noWordsDue: "No words due for review today! Excellent job!",
     emptyLibraryCta: "Add my first word",
+    emptyLanguageHint: "You're currently filtering by \"{lang}\". No words in this language yet. Go add some now.",
     // ⚽ Football Rules Hall
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ FIFA Laws of the Game — Interactive Hall",
@@ -982,6 +985,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "日本語 UI",
     noWordsDue: "今日復習する単語はありません！素晴らしい！",
     emptyLibraryCta: "最初の単語を追加する",
+    emptyLanguageHint: "現在「{lang}」で絞り込み中。この言語の単語はまだありません。今すぐ追加しましょう。",
     // ⚽ サッカー規則ホール
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ FIFA サッカー規則 インタラクティブホール",
@@ -1296,6 +1300,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "UI en Español",
     noWordsDue: "¡No hay palabras pendientes para hoy! ¡Buen trabajo!",
     emptyLibraryCta: "Añadir mi primera palabra",
+    emptyLanguageHint: "Estás filtrando por \"{lang}\". Aún no hay palabras en este idioma. ¡Añade algunas ahora!",
     // ⚽ Salón de Reglas del Fútbol
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ Salón Interactivo de Reglas de la FIFA",
@@ -1610,6 +1615,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "UI en Français",
     noWordsDue: "Aucun mot à réviser aujourd'hui ! Excellent travail !",
     emptyLibraryCta: "Ajouter mon premier mot",
+    emptyLanguageHint: "Vous filtrez actuellement par « {lang} ». Aucun mot dans cette langue pour l'instant. Allez en ajouter.",
     // ⚽ Salon des Règles du Football
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ Salon interactif des Règles de la FIFA",
@@ -1924,6 +1930,7 @@ export const translations: Record<string, TranslationSet> = {
     uiLangOptionTarget: "UI em Português",
     noWordsDue: "Não há palavras para revisar hoje! Excelente trabalho!",
     emptyLibraryCta: "Adicionar minha primeira palavra",
+    emptyLanguageHint: "Você está filtrando por \"{lang}\". Ainda não há palavras neste idioma. Vá adicionar agora.",
     // ⚽ Salão das Regras do Futebol
     footballEntryBadge: "FIFA Laws of the Game 2026/2027",
     footballEntryTitle: "⚽ Salão Interativo das Regras da FIFA",

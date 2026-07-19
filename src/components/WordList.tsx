@@ -448,7 +448,17 @@ export default function WordList({
 
   return (
     <div className="space-y-8 animate-fade-in relative">
-      
+
+      {/* 语言筛选下空词库温和提示 */}
+      {selectedLanguage !== "All" && words.length === 0 && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl border border-amber-200 bg-amber-50/80 text-amber-800 shadow-sm">
+          <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-500" />
+          <div className="flex-1 text-sm leading-relaxed">
+            {t.emptyLanguageHint.replace("{lang}", selectedLanguage)}
+          </div>
+        </div>
+      )}
+
       {/* Visual Learning Statistics Dashboard */}
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
