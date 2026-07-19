@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.8.1（2026-07-18，FootballRules 移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染）
+- **当前版本**：v1.8.2（2026-07-19，WordList 语言筛选下空词库温和提示条）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -28,6 +28,12 @@
 - 我可以**AI 重新生成**某个单词的全部字段
 - 我可以**按语言过滤**词库（English / Japanese / Spanish / French / Portuguese）
 - 分页底部正确显示「第 N / M 页 (共 X 个)」
+
+### 1.2.1 语言筛选下空词库提示（v1.8.2）
+- 当 `selectedLanguage !== "All"` 且当前语言下没有词时，WordList 顶部显示琥珀色提示条
+- 文案："当前筛选的是「{lang}」语言，该语言下还没有单词。现在就去添加吧。"（6 种 UI 语言全覆盖）
+- 实现位置：[src/components/WordList.tsx](file:///src/components/WordList.tsx) 顶部条件渲染 + [src/lib/translations.ts](file:///src/lib/translations.ts) 新增 `emptyLanguageHint` key
+- **背景**：线上排查发现用户误切到非母语筛选导致"看不到词"，确认数据未丢，加 UX 引导
 
 ### 1.3 复习会话
 - 我可以**查看今日待复习清单**（按 `nextReviewAt <= 虚拟时间` 过滤）
@@ -296,7 +302,7 @@
 | `Auth` | [src/components/Auth.tsx](file:///src/components/Auth.tsx) | 登录/注册（登录成功立即跳转，不再 setTimeout） |
 | `Navbar` | [src/components/Navbar.tsx](file:///src/components/Navbar.tsx) | 顶部导航 + 语言切换 + 时钟重置按钮 |
 | `Dashboard` | [src/components/Dashboard.tsx](file:///src/components/Dashboard.tsx) | 统计卡片 + 阶段分布图 + 时间旅行 + 空词库引导 |
-| `WordList` | [src/components/WordList.tsx](file:///src/components/WordList.tsx) | 词库 CRUD + 批量导入 + 导入进度条 + 正确分页文案 |
+| `WordList` | [src/components/WordList.tsx](file:///src/components/WordList.tsx) | 词库 CRUD + 批量导入 + 导入进度条 + 正确分页文案 + v1.8.2 语言筛选下空词库提示 |
 | `ReviewSession` | [src/components/ReviewSession.tsx](file:///src/components/ReviewSession.tsx) | 复习会话 + 错词重考 + Unicode-safe 例句挖空 |
 | `Profile` | [src/components/Profile.tsx](file:///src/components/Profile.tsx) | 资料 + 改密码 + 勋章墙（level 入口已移除）|
 - FootballRules.tsx（v1.7）
@@ -368,6 +374,11 @@
 ---
 
 ## 8. 版本历史
+
+**v1.8.2（2026-07-19）**：WordList 语言筛选下空词库温和提示
+- 🟢 UX：当用户切到具体目标语言（English/Japanese/Spanish/French/Portuguese）但该语言下没有词时，词库页顶部显示琥珀色提示条，避免误以为数据丢失
+- 🟢 i18n：新增 `emptyLanguageHint` key × 6 种 UI 语言
+- 背景：线上排查发现用户误切到法语筛选（前端从 localStorage 自动沿用上次 selectedLanguage）导致看不到英语词，确认数据未丢，加 UX 引导
 
 **v1.8.1（2026-07-18）**：FootballRules 移动端响应式 + 章节切换滚动复位 + bullet list 结构化渲染
 - 🔴 Bug：手机端（iPhone 15 Pro 等）打开足球规则页面后,看不到 14 条规则正文,布局完全错位
