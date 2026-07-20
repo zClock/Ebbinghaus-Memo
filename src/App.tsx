@@ -510,48 +510,52 @@ export default function App() {
   // 3.8 Batch Import Words（逐个调用 /api/words/create，支持进度回调）
   const handleImportWords = async (
     spellings: string[],
-    onProgress?: (done: number, total: number, current: string) => void
+    onProgress?: (done: number, total: number, current: string) => void,
+    mode: "fast" | "quality" = "fast"
   ): Promise<{
     successCount: number;
     addedWords: string[];
     errors: { spelling: string; error: string }[];
   }> => {
     const wordLang = selectedLanguage === "All" ? "English" : selectedLanguage;
-    const addedWords: string[] = [];
-    const errors: { spelling: string; error: string }[] = [];
     const total = spellings.length;
+    // 模拟进度(后端并发处理无法精确回调每个词)
+    onProgress?.(0, total, mode === "quality" ? "GLM 5.2" : "Gemini Lite");
 
-    for (let i = 0; i < spellings.length; i++) {
-      const spelling = spellings[i];
-      onProgress?.(i, total, spelling);
-      try {
-        const res = await fetch("/api/words/create", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({ spelling, language: wordLang }),
-        });
-        if (res.status === 201) {
-          addedWords.push(spelling);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          errors.push({ spelling, error: errData.error || `HTTP ${res.status}` });
-        }
-      } catch (err: any) {
-        errors.push({ spelling, error: err.message || "网络错误" });
+    try {
+      const res = await fetch("/api/words/import-batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ spellings, language: wordLang, mode }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
       }
-    }
 
-    onProgress?.(total, total, "");
-    // 全部完成后统一刷新
-    await Promise.all([
-      fetchStats(token, selectedLanguage),
-      fetchWords(token, selectedLanguage),
-      fetchDueWords(token, selectedLanguage)
-    ]);
-    return { successCount: addedWords.length, addedWords, errors };
+      const result = await res.json();
+      onProgress?.(total, total, "");
+
+      // 刷新数据
+      await Promise.all([
+        fetchStats(token, selectedLanguage),
+        fetchWords(token, selectedLanguage),
+        fetchDueWords(token, selectedLanguage)
+      ]);
+
+      return {
+        successCount: result.successCount,
+        addedWords: result.addedWords,
+        errors: result.errors || []
+      };
+    } catch (err: any) {
+      onProgress?.(total, total, "");
+      throw err;
+    }
   };
 
   // 4. Submit review session results

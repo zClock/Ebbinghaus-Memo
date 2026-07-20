@@ -1720,7 +1720,13 @@ async function getVirtualTime(): Promise<Date> {
 }
 
 // AI generation fallback for dictionary details
-async function generateAiWordDetails(spelling: string, targetLanguage: string = "English"): Promise<{
+type ImportMode = "fast" | "quality";
+
+async function generateAiWordDetails(
+  spelling: string,
+  targetLanguage: string = "English",
+  mode: ImportMode = "fast"
+): Promise<{
   phonetic: string;
   definition: string;
   example: string;
@@ -1735,12 +1741,29 @@ Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for J
 Return ONLY a JSON object with exactly these keys:
 {"phonetic": "...", "definition": "...", "example": "...", "exampleTranslation": "...", "mnemonic": "..."}`;
 
-  // ----- Try Gemini first (primary) -----
+  // === quality 模式: 优先用 GLM 5.2(实测质量最佳),失败再回退 Gemini ===
+  if (mode === "quality" && isGlmConfigured) {
+    try {
+      console.log(`[AI Dict] quality 模式 - 用 GLM ${glmConfig.model} 生成 "${spelling}"`);
+      const result = await generateWithGlm(spelling, prompt);
+      return result;
+    } catch (err) {
+      console.warn(`[AI Dict] quality 模式 GLM 失败,回退到 Gemini:`, (err as Error).message);
+      // 继续走下面的 Gemini 逻辑作为兜底
+    }
+  }
+
+  // === fast 模式 或 quality 兜底: 走 Gemini ===
+  // fast 模式优先用 flash-lite(更快),quality 兜底也用相同顺序
   if (ai) {
-    const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+    // fast 模式把 flash-lite 放第一位(跳过 3.5-flash 加速)
+    const modelsToTry = mode === "fast"
+      ? ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
+      : ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+
     for (const model of modelsToTry) {
       try {
-        console.log(`[AI Dict] Attempting details generation for "${spelling}" using Gemini model: ${model}`);
+        console.log(`[AI Dict] ${mode} 模式 - 尝试 Gemini ${model} 生成 "${spelling}"`);
         const response = await ai.models.generateContent({
           model: model,
           contents: prompt,
@@ -1778,48 +1801,10 @@ Return ONLY a JSON object with exactly these keys:
     console.log(`[AI Dict] Gemini not configured, trying GLM directly for "${spelling}".`);
   }
 
-  // ----- Fallback to GLM (Anthropic-compatible endpoint) -----
-  if (isGlmConfigured) {
+  // === 最终兜底: GLM(quality 模式已尝试过,这里只对 fast 模式兜底) ===
+  if (mode === "fast" && isGlmConfigured) {
     try {
-      console.log(`[AI Dict] Attempting details generation for "${spelling}" using GLM model: ${glmConfig.model}`);
-      const glmRes = await fetch(`${glmConfig.baseUrl}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": glmConfig.apiKey,
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: glmConfig.model,
-          max_tokens: 1024,
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ]
-        })
-      });
-
-      if (!glmRes.ok) {
-        const errText = await glmRes.text();
-        throw new Error(`GLM HTTP ${glmRes.status}: ${errText}`);
-      }
-
-      const glmData: any = await glmRes.json();
-      const rawText = Array.isArray(glmData.content)
-        ? glmData.content.map((c: any) => c.text || "").join("")
-        : "";
-      const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      const parsed = JSON.parse(jsonStr || "{}");
-      console.log(`[AI Dict] Successfully generated details with GLM model: ${glmConfig.model}`);
-      return {
-        phonetic: parsed.phonetic || "/-/",
-        definition: parsed.definition || "未知释义",
-        example: parsed.example || "No example sentence available.",
-        exampleTranslation: parsed.exampleTranslation || "暂无例句翻译。",
-        mnemonic: parsed.mnemonic || "暂无助记联想。"
-      };
+      return await generateWithGlm(spelling, prompt);
     } catch (err) {
       console.error(`[AI Dict] GLM generation failed for "${spelling}":`, err);
       throw new Error(`Both Gemini and GLM failed: ${(err as Error).message}`);
@@ -1827,6 +1812,79 @@ Return ONLY a JSON object with exactly these keys:
   }
 
   throw new Error("No AI provider available (neither Gemini nor GLM configured or all failed)");
+}
+
+// GLM 调用封装(quality 模式主路径 + fast 模式兜底)
+async function generateWithGlm(spelling: string, prompt: string): Promise<{
+  phonetic: string;
+  definition: string;
+  example: string;
+  exampleTranslation: string;
+  mnemonic: string;
+}> {
+  const glmRes = await fetch(`${glmConfig.baseUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": glmConfig.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: glmConfig.model,
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!glmRes.ok) {
+    const errText = await glmRes.text();
+    throw new Error(`GLM HTTP ${glmRes.status}: ${errText}`);
+  }
+
+  const glmData: any = await glmRes.json();
+  const rawText = Array.isArray(glmData.content)
+    ? glmData.content.map((c: any) => c.text || "").join("")
+    : "";
+  const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const parsed = JSON.parse(jsonStr || "{}");
+  console.log(`[AI Dict] Successfully generated details with GLM model: ${glmConfig.model}`);
+  return {
+    phonetic: parsed.phonetic || "/-/",
+    definition: parsed.definition || "未知释义",
+    example: parsed.example || "No example sentence available.",
+    exampleTranslation: parsed.exampleTranslation || "暂无例句翻译。",
+    mnemonic: parsed.mnemonic || "暂无助记联想。"
+  };
+}
+
+// 并发处理工具: 限制并发数,避免触发 API 限流
+async function processWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  processor: (item: T, index: number) => Promise<R>
+): Promise<{ result: R; index: number }[]> {
+  const results: { result: R; index: number }[] = [];
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+
+  for (let w = 0; w < Math.min(concurrency, items.length); w++) {
+    workers.push((async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        try {
+          const r = await processor(items[idx], idx);
+          results.push({ result: r, index: idx });
+        } catch (err) {
+          // 重新抛出,由外层处理;这里不 catch 让 Promise reject
+          throw err;
+        }
+      }
+    })());
+  }
+
+  await Promise.all(workers);
+  // 按原索引排序,保持顺序
+  return results.sort((a, b) => a.index - b.index);
 }
 
 // （原 generateDistractorWords AI 函数已废弃，改为本地词典 + 编辑距离算法 findSimilarWords）
@@ -2274,18 +2332,18 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
 });
 
 app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
-  const { spellings, language } = req.body;
+  const { spellings, language, mode: rawMode } = req.body;
   if (!spellings || !Array.isArray(spellings)) {
     return res.status(400).json({ error: "Spellings 必须是一个数组" });
   }
 
   const targetLanguage = language || "English";
+  // 兼容前端传入的 mode: 默认 fast(快速模式),用户可选 quality(高质量模式)
+  const importMode: ImportMode = rawMode === "quality" ? "quality" : "fast";
 
   try {
     const vTime = await getVirtualTime();
-    const results: any[] = [];
-    const errors: any[] = [];
-    
+
     const userWordsList = await getUserWords(req.userId);
     const existingWords = new Set(
       userWordsList
@@ -2304,108 +2362,149 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
       return res.status(400).json({ error: `未检测到有效的${targetLanguage === "English" ? "英文" : targetLanguage}单词，请检查输入。` });
     }
 
-    for (const spelling of targetSpellings) {
+    // 待处理的单词列表(跳过已存在的)
+    const pending: { spelling: string; idx: number }[] = [];
+    const errors: any[] = [];
+    for (let i = 0; i < targetSpellings.length; i++) {
+      const spelling = targetSpellings[i];
       const cleanSpelling = spelling.toLowerCase();
-      
       if (existingWords.has(cleanSpelling)) {
         errors.push({ spelling: cleanSpelling, error: "已存在于词库中" });
-        continue;
+      } else {
+        pending.push({ spelling: cleanSpelling, idx: i });
+        existingWords.add(cleanSpelling);
       }
+    }
 
-      let phonetic = "";
-      let definition = "";
-      let example = "";
-      let exampleTranslation = "";
-      let mnemonic = "";
-      let audioUrl = "";
+    // === 并发处理每个单词 ===
+    // 并发数:5(平衡速度与 API 限流,Gemini Lite / GLM 都支持)
+    const concurrency = 5;
+    console.log(`[Import] ${importMode} 模式,开始并发 ${concurrency} 处理 ${pending.length} 个词`);
 
-      if (targetLanguage === "English") {
-        try {
-          const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
-          if (dictRes.ok) {
-            const dictData = await dictRes.json();
-            if (Array.isArray(dictData) && dictData.length > 0) {
-              const item = dictData[0];
-              phonetic = item.phonetic || (item.phonetics && item.phonetics.find((p: any) => p.text)?.text) || "";
-              
-              if (item.phonetics) {
-                const validAudio = item.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
-                if (validAudio) {
-                  audioUrl = validAudio.audio;
+    const processed = await processWithConcurrency(
+      pending,
+      concurrency,
+      async (item): Promise<any> => {
+        const cleanSpelling = item.spelling;
+        let phonetic = "";
+        let definition = "";
+        let example = "";
+        let exampleTranslation = "";
+        let mnemonic = "";
+        let audioUrl = "";
+
+        // 字典 API 查询(仅英文,与 AI 并行执行)
+        const dictPromise = (targetLanguage === "English")
+          ? (async () => {
+              try {
+                const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
+                if (dictRes.ok) {
+                  const dictData = await dictRes.json();
+                  if (Array.isArray(dictData) && dictData.length > 0) {
+                    const entry = dictData[0];
+                    const phoneticFromDict = entry.phonetic || (entry.phonetics && entry.phonetics.find((p: any) => p.text)?.text) || "";
+                    let audioFromDict = "";
+                    if (entry.phonetics) {
+                      const validAudio = entry.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
+                      if (validAudio) audioFromDict = validAudio.audio;
+                    }
+                    let definitionFromDict = "";
+                    let exampleFromDict = "";
+                    if (entry.meanings && entry.meanings.length > 0) {
+                      const meaning = entry.meanings[0];
+                      if (meaning.definitions && meaning.definitions.length > 0) {
+                        definitionFromDict = meaning.definitions[0].definition || "";
+                        exampleFromDict = meaning.definitions[0].example || "";
+                      }
+                    }
+                    return { phonetic: phoneticFromDict, audio: audioFromDict, definition: definitionFromDict, example: exampleFromDict };
+                  }
                 }
+              } catch (err) {
+                console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
               }
+              return null;
+            })()
+          : Promise.resolve(null);
 
-              if (item.meanings && item.meanings.length > 0) {
-                const meaning = item.meanings[0];
-                if (meaning.definitions && meaning.definitions.length > 0) {
-                  definition = meaning.definitions[0].definition || "";
-                  example = meaning.definitions[0].example || "";
-                }
-              }
-            }
+        // AI 生成详情(按 mode 选模型)
+        const aiPromise = (async () => {
+          try {
+            return await generateAiWordDetails(cleanSpelling, targetLanguage, importMode);
+          } catch (aiErr) {
+            console.error(`AI enrichment failed for ${cleanSpelling}:`, aiErr);
+            return null;
           }
-        } catch (err) {
-          console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
-        }
-      }
+        })();
 
-      if (ai) {
-        try {
-          const aiData = await generateAiWordDetails(cleanSpelling, targetLanguage);
+        // 字典与 AI 并行执行
+        const [dictInfo, aiData] = await Promise.all([dictPromise, aiPromise]);
+
+        // 字典 API 结果作为补充(主要用它的 audioUrl,因为 AI 不会生成音频)
+        if (dictInfo) {
+          phonetic = dictInfo.phonetic || "";
+          audioUrl = dictInfo.audio || "";
+          // 字典的释义/例句作为兜底
+          definition = dictInfo.definition || "";
+          example = dictInfo.example || "";
+        }
+
+        // AI 结果覆盖字典结果(AI 质量更好)
+        if (aiData) {
           phonetic = aiData.phonetic || phonetic;
-          definition = aiData.definition;
-          example = aiData.example;
+          definition = aiData.definition || definition;
+          example = aiData.example || example;
           exampleTranslation = aiData.exampleTranslation;
           mnemonic = aiData.mnemonic;
-        } catch (aiErr) {
-          console.error(`Gemini enrichment failed for ${cleanSpelling}:`, aiErr);
         }
-      }
 
-      if (!definition) {
-        definition = "未找到中文释义，可手动编辑。";
-      }
-      if (!phonetic) {
-        phonetic = "/-/";
-      }
-      if (!example) {
-        example = "No illustrative example sentence found.";
-        exampleTranslation = "暂无释义翻译。";
-      }
-      if (!mnemonic) {
-        mnemonic = "联想记忆：试着将该词拆分或与已知词汇关联记忆。";
-      }
+        if (!definition) {
+          definition = "未找到中文释义，可手动编辑。";
+        }
+        if (!phonetic) {
+          phonetic = "/-/";
+        }
+        if (!example) {
+          example = "No illustrative example sentence found.";
+          exampleTranslation = "暂无释义翻译。";
+        }
+        if (!mnemonic) {
+          mnemonic = "联想记忆：试着将该词拆分或与已知词汇关联记忆。";
+        }
 
-      const newWord = {
-        id: "word_" + Math.random().toString(36).substring(2, 11),
-        userId: req.userId,
-        spelling: cleanSpelling,
-        phonetic,
-        definition,
-        example,
-        exampleTranslation,
-        mnemonic,
-        audioUrl: audioUrl || null,
-        createdAt: vTime.toISOString(),
-        reviewStage: 0,
-        consecutiveCorrect: 0,
-        lastResetAt: vTime.toISOString(),
-        nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-        language: targetLanguage
-      };
+        return {
+          id: "word_" + Math.random().toString(36).substring(2, 11),
+          userId: req.userId,
+          spelling: cleanSpelling,
+          phonetic,
+          definition,
+          example,
+          exampleTranslation,
+          mnemonic,
+          audioUrl: audioUrl || null,
+          createdAt: vTime.toISOString(),
+          reviewStage: 0,
+          consecutiveCorrect: 0,
+          lastResetAt: vTime.toISOString(),
+          nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          language: targetLanguage
+        };
+      }
+    );
 
-      results.push(newWord);
-      existingWords.add(cleanSpelling);
-    }
+    const results = processed.map(p => p.result);
 
     if (results.length > 0) {
       await createWordsBatch(results);
     }
 
+    console.log(`[Import] ${importMode} 模式完成: 成功 ${results.length}, 错误 ${errors.length}`);
+
     res.json({
       successCount: results.length,
       addedWords: results.map(w => w.spelling),
-      errors
+      errors,
+      mode: importMode
     });
   } catch (err: any) {
     console.error("Batch import error:", err);
