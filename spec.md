@@ -211,6 +211,32 @@
 - 长文本使用 `line-clamp-1` / `truncate` 优雅截断
 - 移动端：看板横向滚动 snap，左侧面板堆叠在顶部
 
+### v1.9 UI 重构：智能应用拓展中心 + 拓展应用下拉菜单
+
+> 周计划系统上线后，顶部导航曾短暂出现过独立的「📅 周计划」Tab。v1.9 稳定后重构为**集中式应用管理中心**，避免 Tab 无限增长。
+
+#### Dashboard：智能应用拓展中心 / Application Hub
+- 位置：仪表盘 Welcome Banner 之下、Stats Cards 之上
+- 结构（与 FootballRules 入口并列展示）：
+  - **Header**：Sparkles 闪烁 + 「智能应用拓展中心 / Application Hub」标题 + 右上角灰底「⚡ 一键直达拓展系统」徽章
+  - **2 列网格**：每张卡为横向 flex 布局
+    - 左侧 12x12 图标方块（emerald-50 / indigo-50）
+    - 中间标题 + 小徽章（如「17章节·双语」「词库打通·4类任务」）+ 一句描述
+    - 右侧 8x8 圆形箭头按钮（hover 时变彩色 + 平移）
+  - **Footer 提示条**：「更多拓展应用即将上线 · 也可从顶部导航栏『拓展应用』菜单进入」
+- 卡片列表（当前 2 张）：
+  - ⚽ 国际足联足球规则科普讲堂（点击进 rules 视图）
+  - 📅 个性化日程与学习周计划（点击进 plans 视图）
+
+#### Navbar：拓展应用下拉菜单 / App Hub Dropdown
+- **触发器**：`[□ 拓展应用 ▾]`（Grid 图标 + ChevronDown，激活态带 indigo 边框）
+- 激活逻辑：当下拉内任一应用（rules / plans）是当前视图时，触发器高亮
+- **下拉面板**：宽 256px，含 2 个应用选项（周计划 indigo / 规则讲堂 emerald）
+- 每个选项：32x32 小图标方块 + 标题（按 UI 语言切换）+ 一句副标题
+- 关闭机制：`fixed inset-0 z-30` backdrop 点击关闭
+- **多语言**：`getAppHubLabel` / `getRulesLabel` / `getPlansLabel` 三个函数，6 种 UI 语言全覆盖（zh/en/ja/es/fr/pt）
+- **所有导航按钮加 `whitespace-nowrap`**：避免「控制面板」「开始复习」等文字换行（修复窄屏体验）
+
 ### 数据库持久化（v1.9.1 引入）
 - v1.9 初版所有数据存 localStorage（`ebbinghaus_learning_plans` + `ebbinghaus_task_types`），存在多设备不同步、易丢失等问题
 - v1.9.1 把全部周计划数据落到 **Supabase Postgres（生产）+ 本地 JSON（开发）** 双路径，与 `words` / `histories` 架构一致
@@ -581,7 +607,9 @@
 - 🔴 新功能：任务类型完全自定义。13 款 Lucide 图标 + 10 种主题色组合，用户可随意增删/重命名，持久化到 localStorage
 - 🔴 新功能：词库深度联动。任意任务类型可关联任意单词（跨语言），「▶ 一键复习」直接拉起针对关联词的复习会话
 - 🔴 新功能：闭环学习自动完成。从周计划触发的复习会话提交后，系统自动把对应任务标为已完成，并更新当日整体打卡状态，然后跳回 plans 视图
-- 🟢 UX：Dashboard 新增「📅 定制你的专属周日程计划」紫蓝色入口卡片
+- 🔴 UI 重构：Dashboard 新增「智能应用拓展中心 / Application Hub」白底容器 + 2 列应用卡（替代之前独立的两个大横幅）
+- 🔴 UI 重构：Navbar 用「拓展应用」下拉菜单取代之前独立的「📅 周计划」Tab，避免 Tab 无限增长；6 种 UI 语言全覆盖
+- 🔧 Bug：所有导航按钮（控制面板/开始复习/词库/拓展应用/个人）加 `whitespace-nowrap`，修复窄屏文字换行
 - 🟢 UX：WordList 顶部新增 tip bar 引导跳转到周计划
 - 🟢 UX：Review 空态新增次按钮「📅 定制专属周计划」
 - 🟢 i18n：LearningPlans 组件内置 6 种 UI 语言（zh/en/ja/es/fr/pt）独立翻译表，不依赖主 translations.ts
