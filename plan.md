@@ -125,6 +125,18 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.3（2026-07-20）：批量导入支持模型选择 + 后端并发加速
+- ✅ [src/components/WordList.tsx](file:///src/components/WordList.tsx) 批量导入弹窗新增「生成模式」单选（⚡ 快速 / 🎯 高质量）
+  - 用户选择持久化到 localStorage（`ebbinghaus_import_mode`），下次自动沿用
+  - 快速模式显示预估「~6s/30 词」，高质量模式「~30s/30 词」
+- ✅ [src/App.tsx](file:///src/App.tsx) `handleImportWords` 改为调 `/api/words/import-batch`（替换原逐个 create）+ 传 mode 参数
+- ✅ [api/index.ts](file:///api/index.ts) `/api/words/import-batch` 改并发 5 处理（新增 `processWithConcurrency` 工具函数）
+- ✅ 字典 API 与 AI 并行执行（`Promise.all([dictPromise, aiPromise])`），单词耗时减半
+- ✅ `generateAiWordDetails(spelling, lang, mode)` 加 mode 参数：fast 优先 Gemini Lite，quality 优先 GLM 5.2
+- ✅ 抽取 `generateWithGlm` 函数消除 GLM 调用重复代码
+- ✅ 端到端验证：fast 和 quality 模式各导 3 词均 100% 成功，内容质量达标
+- ⚠️ 单个添加单词和重新生成仍走默认 fast 模式（未传 mode，待后续统一）
+
 ### v1.9.2（2026-07-20）：补充 Git Flow SOP 协作规范
 - ✅ [CLAUDE.md](file:///CLAUDE.md) §6 从纯规则列表扩展为 4 个可执行子节（6.1 SOP 6 步表 / 6.2 6 条红线 / 6.3 新 session 自检 / 6.4 Angular 提交规范 + scope 常用值）
 - ✅ [spec.md](file:///spec.md) 新增 §7「协作流程（Git Flow SOP）」摘要章节，并把原 §7 已知问题调整为 §8，原 §8 版本历史调整为 §9
