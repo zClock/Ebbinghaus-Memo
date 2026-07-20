@@ -134,7 +134,7 @@
 
 ### v1.9.1（2026-07-20）：周计划数据落到数据库
 - ✅ [supabase-schema.sql](file:///supabase-schema.sql) 新增 §7，包含 4 张表（`learning_plans` / `learning_tasks` / `learning_day_meta` / `user_task_types`）+ 4 个索引
-- ✅ [api/index.ts](file:///api/index.ts) 新增 8 个 DAO 函数（`listUserPlans` / `createPlanWithContent` / `updatePlanMeta` / `deletePlan` / `upsertTask` / `deleteTask` / `upsertDayMeta` / `getUserTaskTypes` / `setUserTaskTypes`），全部支持 Supabase + 本地 JSON 双路径
+- ✅ [api/index.ts](file:///api/index.ts) 新增 9 个 DAO 函数（`listUserPlans` / `createPlanWithContent` / `updatePlanMeta` / `deletePlan` / `upsertTask` / `deleteTask` / `upsertDayMeta` / `getUserTaskTypes` / `setUserTaskTypes`），全部支持 Supabase + 本地 JSON 双路径
 - ✅ `WordDbSchema` 接口扩展 4 个可选字段；`initLocalDb` 老文件自动补字段（无需手动迁移）
 - ✅ 新增 11 个 REST 端点：`GET/POST /api/plans`、`PATCH/DELETE /api/plans/:id`、`POST/PATCH/DELETE /api/plans/:id/tasks/:taskId`、`PATCH /api/plans/:id/days/:day`、`GET/PUT /api/user/task-types`、`POST /api/plans/migrate`
 - ✅ [src/App.tsx](file:///src/App.tsx) 新增 `plans` / `taskTypes` state、`fetchPlansAndTypes`、`migrateLocalPlansIfNeeded`、8 个 CRUD handler；`loadAllData` 并行加载计划；`handleSubmitReview` 闭环改为调 PATCH API
@@ -147,16 +147,16 @@
 - ✅ 新增 [src/components/LearningPlans.tsx](file:///src/components/LearningPlans.tsx)（~1500 行）：8 列横向滚动看板 + 左侧计划列表 + 任务类型管理模态框 + 任务编辑器（含词库关联搜索）
 - ✅ 扩展 [src/types.ts](file:///src/types.ts) 新增 `LearningPlan` / `DayPlan` / `LearningTask` / `TaskType` 四个类型
 - ✅ App.tsx 新增 `plans` 视图路由 + `allWords` 跨语言词库快照 + `customReviewWords` / `customReviewMetadata` 状态
-- ✅ App.tsx `handleSubmitReview` 增加自动闭环：复习完成后写回 localStorage 把对应任务标记为已完成
 - ✅ App.tsx 新增 `handleStartCustomReview` 方法，从周计划拉起针对关联词的复习会话
-- ✅ Navbar 新增「📅 周计划」Tab（CalendarRange 图标）
-- ✅ Dashboard 新增「📅 定制你的专属周日程计划」紫蓝色入口卡片
-- ✅ WordList 新增顶部 tip bar 引导跳转到周计划（onViewPlans prop）
+- ✅ App.tsx `handleSubmitReview` 增加自动闭环：复习完成后写回 localStorage 把对应任务标记为已完成
+- ✅ Dashboard 新增「智能应用拓展中心 / Application Hub」白底容器 + 2 列应用卡（足球规则 + 周计划）
+- ✅ Navbar 用「拓展应用」下拉菜单取代独立 Tab，避免 Tab 无限增长；6 种 UI 语言全覆盖
+- ✅ 所有导航按钮加 `whitespace-nowrap`，修复窄屏文字换行
+- ✅ WordList 新增顶部 tip bar 引导跳转到周计划
 - ✅ Review 空态新增「📅 定制专属周计划」次按钮
-- ✅ 6 种 UI 语言独立翻译表（zh/en/ja/es/fr/pt），含星期名、任务类型管理文案、所有 UI 文案
+- ✅ 6 种 UI 语言独立翻译表（zh/en/ja/es/fr/pt）
 - ✅ localStorage 持久化：`ebbinghaus_learning_plans` + `ebbinghaus_task_types`
-- ✅ tsc 类型检查：本次新增/修改的所有文件 0 错误（剩余 ReviewSession QueueWord 错误为历史遗留）
-- ✅ dev server 启动验证：8 秒后端口 3003 正常响应
+- ✅ tsc 类型检查 0 错误，dev server 启动验证通过
 
 ### v1.8.2（2026-07-19）：WordList 语言筛选下空词库温和提示 + README 重写
 - ✅ WordList 顶部条件渲染琥珀色提示条：`selectedLanguage !== "All" && words.length === 0`
