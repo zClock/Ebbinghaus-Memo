@@ -1,9 +1,10 @@
-import { BookOpen, Calendar, GraduationCap, LayoutDashboard, RefreshCw, User as UserIcon, Languages, Globe } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, Calendar, GraduationCap, LayoutDashboard, RefreshCw, User as UserIcon, Languages, Globe, Trophy, CalendarRange, ChevronDown, Grid } from "lucide-react";
 import { getTranslation } from "../lib/translations";
 
 interface NavbarProps {
-  currentView: "dashboard" | "review" | "library" | "profile";
-  setCurrentView: (view: "dashboard" | "review" | "library" | "profile") => void;
+  currentView: "dashboard" | "review" | "library" | "profile" | "rules" | "plans";
+  setCurrentView: (view: "dashboard" | "review" | "library" | "profile" | "rules" | "plans") => void;
   dueCount: number;
   virtualTime: string;
   onResetTime: () => void;
@@ -28,7 +29,39 @@ export default function Navbar({
   useTargetUi,
   setUseTargetUi,
 }: NavbarProps) {
+  const [isAppHubOpen, setIsAppHubOpen] = useState(false);
   const t = getTranslation(selectedLanguage, useTargetUi);
+
+  // 「拓展应用」标签的多语言翻译
+  const getAppHubLabel = () => {
+    if (!useTargetUi) return "拓展应用";
+    const targetLang = selectedLanguage === "All" ? "English" : selectedLanguage;
+    if (targetLang === "Japanese") return "アプリ";
+    if (targetLang === "Spanish") return "Aplicaciones";
+    if (targetLang === "French") return "Applications";
+    if (targetLang === "Portuguese") return "Aplicações";
+    return "App Hub";
+  };
+
+  const getRulesLabel = () => {
+    if (!useTargetUi) return "规则讲堂";
+    const targetLang = selectedLanguage === "All" ? "English" : selectedLanguage;
+    if (targetLang === "Japanese") return "ルール";
+    if (targetLang === "Spanish") return "Reglas";
+    if (targetLang === "French") return "Règles";
+    if (targetLang === "Portuguese") return "Regras";
+    return "Rules";
+  };
+
+  const getPlansLabel = () => {
+    if (!useTargetUi) return "周计划";
+    const targetLang = selectedLanguage === "All" ? "English" : selectedLanguage;
+    if (targetLang === "Japanese") return "学習計画";
+    if (targetLang === "Spanish") return "Planes";
+    if (targetLang === "French") return "Plans";
+    if (targetLang === "Portuguese") return "Planos";
+    return "Plans";
+  };
 
   const formattedTime = () => {
     if (!virtualTime) return "";
@@ -149,7 +182,7 @@ export default function Navbar({
             <button
               id="btn-nav-dashboard"
               onClick={() => setCurrentView("dashboard")}
-              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
                 currentView === "dashboard"
                   ? "bg-slate-50 text-indigo-600 font-semibold"
                   : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
@@ -162,7 +195,7 @@ export default function Navbar({
             <button
               id="btn-nav-review"
               onClick={() => setCurrentView("review")}
-              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all relative cursor-pointer ${
+              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all relative cursor-pointer whitespace-nowrap ${
                 currentView === "review"
                   ? "bg-slate-50 text-indigo-600 font-semibold"
                   : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
@@ -180,7 +213,7 @@ export default function Navbar({
             <button
               id="btn-nav-library"
               onClick={() => setCurrentView("library")}
-              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
                 currentView === "library"
                   ? "bg-slate-50 text-indigo-600 font-semibold"
                   : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
@@ -190,11 +223,102 @@ export default function Navbar({
               <span className="hidden sm:inline">{t.library}</span>
             </button>
 
+            {/* 🌟 拓展应用 / App Hub Dropdown（整合所有应用模块） */}
+            <div className="relative">
+              <button
+                id="btn-nav-apphub"
+                onClick={() => setIsAppHubOpen(!isAppHubOpen)}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                  currentView === "plans" || currentView === "rules"
+                    ? "bg-indigo-50/70 text-indigo-600 font-semibold border-indigo-100"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-50 border-transparent"
+                }`}
+              >
+                <Grid className="w-4 h-4 shrink-0 text-indigo-500" />
+                <span className="hidden sm:inline">{getAppHubLabel()}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isAppHubOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isAppHubOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 z-30 cursor-default"
+                    onClick={() => setIsAppHubOpen(false)}
+                  />
+                  {/* Dropdown Menu */}
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-200/50 p-2 z-40 animate-fade-in space-y-1">
+                    <div className="px-2.5 py-1.5 mb-1 border-b border-slate-50">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {useTargetUi ? "Applications" : "拓展应用中心"}
+                      </span>
+                    </div>
+
+                    {/* 周计划 Option */}
+                    <button
+                      id="btn-nav-plans"
+                      onClick={() => {
+                        setCurrentView("plans");
+                        setIsAppHubOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all cursor-pointer whitespace-nowrap ${
+                        currentView === "plans"
+                          ? "bg-indigo-50/70 text-indigo-700 font-semibold"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        currentView === "plans" ? "bg-indigo-100 text-indigo-700" : "bg-indigo-50 text-indigo-600"
+                      }`}>
+                        <CalendarRange className="w-4 h-4" />
+                      </div>
+                      <div className="flex-grow min-w-0">
+                        <p className="text-xs font-bold leading-none text-slate-800">
+                          {getPlansLabel()}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-light truncate">
+                          {useTargetUi ? "Weekly plans & habits" : "日程打卡与生词关联"}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* 规则讲堂 Option */}
+                    <button
+                      id="btn-nav-rules"
+                      onClick={() => {
+                        setCurrentView("rules");
+                        setIsAppHubOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all cursor-pointer whitespace-nowrap ${
+                        currentView === "rules"
+                          ? "bg-emerald-50/70 text-emerald-700 font-semibold"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        currentView === "rules" ? "bg-emerald-100 text-emerald-700" : "bg-emerald-50 text-emerald-600"
+                      }`}>
+                        <Trophy className="w-4 h-4" />
+                      </div>
+                      <div className="flex-grow min-w-0">
+                        <p className="text-xs font-bold leading-none text-slate-800">
+                          {getRulesLabel()}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-light truncate">
+                          {useTargetUi ? "FIFA football rules" : "最新足球官方规则检索"}
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
             {user && (
               <button
                 id="btn-nav-profile"
                 onClick={() => setCurrentView("profile")}
-                className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
                   currentView === "profile"
                     ? "bg-slate-50 text-indigo-600 font-semibold"
                     : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"

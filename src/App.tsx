@@ -6,8 +6,10 @@ import ReviewSession from "./components/ReviewSession";
 import Auth from "./components/Auth";
 import Profile from "./components/Profile";
 import FootballRules from "./components/FootballRules";
-import { BookOpen, GraduationCap, RefreshCw, AlertCircle } from "lucide-react";
+import LearningPlans from "./components/LearningPlans";
+import { BookOpen, GraduationCap, RefreshCw, AlertCircle, Calendar } from "lucide-react";
 import { getTranslation } from "./lib/translations";
+import { LearningPlan, LearningTask, TaskType } from "./types";
 
 interface Word {
   id: string;
@@ -46,8 +48,15 @@ export default function App() {
     return localStorage.getItem("ebbinghaus_use_target_ui") === "true";
   });
   
-  const [currentView, setCurrentView] = useState<"dashboard" | "review" | "library" | "profile" | "rules">("dashboard");
+  const [currentView, setCurrentView] = useState<"dashboard" | "review" | "library" | "profile" | "rules" | "plans">("dashboard");
+  const [customReviewWords, setCustomReviewWords] = useState<Word[] | null>(null);
   const [words, setWords] = useState<Word[]>([]);
+  const [allWords, setAllWords] = useState<Word[]>([]);
+  // 当从周计划中触发复习时，保存任务上下文，复习完成后自动把对应任务标记为已完成
+  const [customReviewMetadata, setCustomReviewMetadata] = useState<{ taskId: string; dayOfWeek: number; planId: string } | null>(null);
+  // v1.9: 周计划数据从后端加载(取代 localStorage)
+  const [plans, setPlans] = useState<LearningPlan[]>([]);
+  const [taskTypes, setTaskTypes] = useState<any[]>([]);
   const [dueWords, setDueWords] = useState<Word[]>([]);
   const [histories, setHistories] = useState<any[]>([]);
   const [stats, setStats] = useState<Stats>({
@@ -148,7 +157,8 @@ export default function App() {
       const fetchWordsPromise = fetchWords(t, lang);
       const fetchDueWordsPromise = fetchDueWords(t, lang);
       const fetchHistoriesPromise = fetchHistories(t, lang);
-      await Promise.all([fetchStatsPromise, fetchWordsPromise, fetchDueWordsPromise, fetchHistoriesPromise]);
+      const fetchPlansPromise = fetchPlansAndTypes(t);
+      await Promise.all([fetchStatsPromise, fetchWordsPromise, fetchDueWordsPromise, fetchHistoriesPromise, fetchPlansPromise]);
 
       // Unlock UI immediately as local-server data loaded successfully
       setIsLoading(false);
@@ -185,6 +195,23 @@ export default function App() {
     }
     const data = await res.json();
     setWords(data);
+
+    // 周计划模块关联词库时需要跨语言检索所有单词，这里同步维护 allWords 快照
+    if (lang === "All") {
+      setAllWords(data);
+    } else {
+      try {
+        const resAll = await fetch(`/api/words?language=All`, {
+          headers: { "Authorization": `Bearer ${t}` }
+        });
+        if (resAll.ok) {
+          const dataAll = await resAll.json();
+          setAllWords(dataAll);
+        }
+      } catch (err) {
+        console.error("Failed to fetch all words in fetchWords fallback:", err);
+      }
+    }
   };
 
   const fetchDueWords = async (activeToken?: string | null, activeLang?: string) => {
@@ -213,6 +240,177 @@ export default function App() {
     }
     const data = await res.json();
     setHistories(data);
+  };
+
+  // ===== v1.9 周计划相关 =====
+
+  // 一次性迁移: 首次登录后把 localStorage 的老数据搬到数据库,然后清空
+  const migrateLocalPlansIfNeeded = async (t: string) => {
+    const migratedFlag = localStorage.getItem("ebbinghaus_plans_migrated");
+    if (migratedFlag === "true") return;
+    const localPlans = localStorage.getItem("ebbinghaus_learning_plans");
+    const localTypes = localStorage.getItem("ebbinghaus_task_types");
+    if (!localPlans && !localTypes) {
+      // 没有老数据直接打标
+      localStorage.setItem("ebbinghaus_plans_migrated", "true");
+      return;
+    }
+    try {
+      const plans = localPlans ? JSON.parse(localPlans) : [];
+      const taskTypes = localTypes ? JSON.parse(localTypes) : [];
+      const res = await fetch("/api/plans/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${t}` },
+        body: JSON.stringify({ plans, taskTypes })
+      });
+      if (res.ok) {
+        const result = await res.json();
+        console.log(`[Plans] Migrated ${result.migratedPlans} plans, ${result.migratedTasks} tasks`);
+        // 迁移成功清空 localStorage
+        localStorage.removeItem("ebbinghaus_learning_plans");
+        localStorage.removeItem("ebbinghaus_task_types");
+      }
+    } catch (err) {
+      console.warn("[Plans] Migration failed, will retry next time:", err);
+      return; // 不打标,下次启动再试
+    }
+    localStorage.setItem("ebbinghaus_plans_migrated", "true");
+  };
+
+  // 加载周计划 + 任务类型
+  const fetchPlansAndTypes = async (t?: string | null) => {
+    const activeToken = t || token;
+    if (!activeToken) return;
+    // 先尝试迁移 localStorage 老数据(幂等)
+    await migrateLocalPlansIfNeeded(activeToken);
+    try {
+      const [plansRes, typesRes] = await Promise.all([
+        fetch("/api/plans", { headers: { "Authorization": `Bearer ${activeToken}` } }),
+        fetch("/api/user/task-types", { headers: { "Authorization": `Bearer ${activeToken}` } })
+      ]);
+      if (plansRes.ok) {
+        const plansData = await plansRes.json();
+        setPlans(plansData);
+      }
+      if (typesRes.ok) {
+        const typesData = await typesRes.json();
+        setTaskTypes(typesData);
+      }
+    } catch (err) {
+      console.error("Failed to fetch plans:", err);
+    }
+  };
+
+  // 创建周计划(含初始 8 天空结构)
+  const handleCreatePlan = async (plan: LearningPlan): Promise<LearningPlan | null> => {
+    try {
+      const res = await fetch("/api/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(plan)
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "创建计划失败");
+      }
+      const created = await res.json();
+      await fetchPlansAndTypes();
+      return created;
+    } catch (err) {
+      console.error("Failed to create plan:", err);
+      return null;
+    }
+  };
+
+  // 更新计划元信息
+  const handleUpdatePlan = async (planId: string, updates: Partial<LearningPlan>): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to update plan:", err);
+    }
+  };
+
+  // 删除计划
+  const handleDeletePlan = async (planId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plans/${planId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to delete plan:", err);
+    }
+  };
+
+  // 新增/更新任务(到某天)
+  const handleSaveTask = async (
+    planId: string,
+    task: LearningTask,
+    dayOfWeek: number,
+    sortOrder = 0
+  ): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plans/${planId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ task, dayOfWeek, sortOrder })
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to save task:", err);
+    }
+  };
+
+  // 删除任务
+  const handleDeleteTask = async (planId: string, taskId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plans/${planId}/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+    }
+  };
+
+  // 更新某天的元信息(休息日 / 整日打卡)
+  const handleUpdateDayMeta = async (
+    planId: string,
+    dayOfWeek: number,
+    meta: { isRestDay?: boolean; completed?: boolean }
+  ): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plans/${planId}/days/${dayOfWeek}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(meta)
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to update day meta:", err);
+    }
+  };
+
+  // 全量替换任务类型配置
+  const handleSaveTaskTypes = async (types: any[]): Promise<void> => {
+    try {
+      const res = await fetch("/api/user/task-types", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(types)
+      });
+      if (res.ok) await fetchPlansAndTypes();
+    } catch (err) {
+      console.error("Failed to save task types:", err);
+    }
   };
 
   // 1. Add word
@@ -373,12 +571,46 @@ export default function App() {
           fetchWords(token, selectedLanguage),
           fetchDueWords(token, selectedLanguage)
         ]);
-        setCurrentView("dashboard");
+
+        // 闭环：若复习从「周计划」中拉起，完成后自动把对应任务标记为已完成，并更新当日整体打卡状态
+        if (customReviewMetadata) {
+          try {
+            await fetch(`/api/plans/${customReviewMetadata.planId}/tasks/${customReviewMetadata.taskId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+              body: JSON.stringify({ completed: true })
+            });
+            // 重新拉取最新数据,让前端看到打卡状态更新
+            await fetchPlansAndTypes();
+          } catch (err) {
+            console.error("Failed to auto-complete task after review:", err);
+          }
+          setCustomReviewMetadata(null);
+        }
+
+        // 从周计划触发的复习结束后回到周计划页，否则回首页
+        setCurrentView(customReviewWords ? "plans" : "dashboard");
+        setCustomReviewWords(null);
       }
     } catch (err) {
       console.error("Failed to submit review:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 4.5 从周计划中拉起一次自定义复习会话（关联单词的子集）
+  const handleStartCustomReview = (wordIds: string[], taskId?: string, dayOfWeek?: number, planId?: string) => {
+    const pool = allWords.length > 0 ? allWords : words;
+    const selectedWords = pool.filter(w => wordIds.includes(w.id));
+    if (selectedWords.length > 0) {
+      setCustomReviewWords(selectedWords);
+      if (taskId && dayOfWeek !== undefined && planId) {
+        setCustomReviewMetadata({ taskId, dayOfWeek, planId });
+      } else {
+        setCustomReviewMetadata(null);
+      }
+      setCurrentView("review");
     }
   };
 
@@ -526,6 +758,7 @@ export default function App() {
                 onStartReview={() => setCurrentView("review")}
                 onNavigateWords={() => setCurrentView("library")}
                 onViewRules={() => setCurrentView("rules")}
+                onViewPlans={() => setCurrentView("plans")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
                 user={user}
@@ -534,11 +767,15 @@ export default function App() {
 
             {currentView === "review" && (
               <div className="space-y-6">
-                {dueWords.length > 0 ? (
+                {(customReviewWords || dueWords).length > 0 ? (
                   <ReviewSession
-                    dueWords={dueWords}
+                    dueWords={customReviewWords || dueWords}
                     onSubmitReview={handleSubmitReview}
-                    onClose={() => setCurrentView("dashboard")}
+                    onClose={() => {
+                      setCustomReviewWords(null);
+                      setCustomReviewMetadata(null);
+                      setCurrentView(customReviewWords ? "plans" : "dashboard");
+                    }}
                     selectedLanguage={selectedLanguage}
                     useTargetUi={useTargetUi}
                   />
@@ -553,13 +790,22 @@ export default function App() {
                     <p className="text-xs text-slate-400 font-light leading-relaxed">
                       {trans.reviewCleanDesc}
                     </p>
-                    <button
-                      id="btn-goto-dashboard"
-                      onClick={() => setCurrentView("dashboard")}
-                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-md cursor-pointer"
-                    >
-                      {trans.goToDashboard}
-                    </button>
+                    <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
+                      <button
+                        id="btn-goto-dashboard"
+                        onClick={() => setCurrentView("dashboard")}
+                        className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                      >
+                        {trans.goToDashboard}
+                      </button>
+                      <button
+                        onClick={() => setCurrentView("plans")}
+                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        {useTargetUi ? "Plan My Week" : "定制专属周计划"}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -575,6 +821,7 @@ export default function App() {
                 onImportWords={handleImportWords}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
+                onViewPlans={() => setCurrentView("plans")}
               />
             )}
 
@@ -593,6 +840,25 @@ export default function App() {
             {currentView === "rules" && (
               <FootballRules
                 onBackToDashboard={() => setCurrentView("dashboard")}
+                selectedLanguage={selectedLanguage}
+                useTargetUi={useTargetUi}
+              />
+            )}
+
+            {currentView === "plans" && (
+              <LearningPlans
+                words={allWords}
+                plans={plans}
+                taskTypes={taskTypes}
+                onCreatePlan={handleCreatePlan}
+                onUpdatePlan={handleUpdatePlan}
+                onDeletePlan={handleDeletePlan}
+                onSaveTask={handleSaveTask}
+                onDeleteTask={handleDeleteTask}
+                onUpdateDayMeta={handleUpdateDayMeta}
+                onSaveTaskTypes={handleSaveTaskTypes}
+                onStartCustomReview={handleStartCustomReview}
+                onBack={() => setCurrentView("dashboard")}
                 selectedLanguage={selectedLanguage}
                 useTargetUi={useTargetUi}
               />

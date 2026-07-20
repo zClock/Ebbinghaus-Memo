@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.8.2（2026-07-19，WordList 语言筛选下空词库温和提示条）
+- **当前版本**：v1.9.1（2026-07-20，周计划数据落到数据库）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -150,6 +150,96 @@
 
 ---
 
+## §1.12 周计划学习日程（v1.9）
+
+第三种顶层视图（与仪表盘/复习/词库并列），灵感来自 WeekTodo 看板，把每周的学习/运动/阅读/语言任务按周一到周日可视化排期，并与词库深度联动。
+
+### 数据模型（localStorage 持久化）
+- **Storage key**：`ebbinghaus_learning_plans`（计划列表）+ `ebbinghaus_task_types`（自定义任务类型配置）
+- **类型定义**：[src/types.ts](file:///src/types.ts) 新增 `LearningPlan` / `DayPlan` / `LearningTask` / `TaskType`
+- **结构**：每个 plan 含 8 个 DayPlan——索引 0 是 Inbox 备忘灵感池，1~7 是周一到周日
+
+### 周计划看板（WeekTodo 风格）
+- 横向滚动看板：8 列（Inbox + 周一~周日），每列固定宽度 290-310px
+- 当日列高亮：靛蓝边框 + ring + 顶部「今日」脉冲徽章
+- 每列可独立滚动任务列表（max-height 340px）
+- 每列底部「+ 快速添加任务」内联表单 + 任务类型图标切换
+- 顶部 Stats Ribbon：计划名 / 日期范围 / 周进度百分比（已完成天数 / 7）
+- 左侧可折叠的计划列表面板（lg:col-span-3，含归档/删除/进度条）
+
+### 任务类型完全自定义
+- **默认 4 种**：shortTask（备忘）/ reading（阅读）/ sports（运动）/ language（语言学习）
+- **管理面板**：左侧底部「⚙ 管理任务类型」按钮触发模态框
+- **自定命名**：用户可随意增删或重命名（如「代码练习」「乐器弹奏」）
+- **13 款 Lucide 图标**：CheckSquare / BookOpen / Dumbbell / Languages / Briefcase / Heart / Smile / Code / GraduationCap / Music / Coffee / Bookmark / Sparkles
+- **10 种主题色**：teal / amber / rose / violet / emerald / blue / indigo / pink / orange / sky，渲染卡片左侧 4px 渐变边框 + 图标背景
+- **持久化**：自动同步至 localStorage，并提供「恢复默认」一键重置
+- 任意任务类型均可关联词库单词（不再局限于「语言学习」）
+
+### 任务编辑与词库关联
+- **快速添加**：每列底部的内联表单，输入标题 + 选图标即可
+- **高级编辑（Advanced）**：弹窗中可填标题/描述，并检索词库单词进行关联
+- **跨语言检索**：关联面板展示 **allWords**（跨所有语言的词库全集），支持拼写/释义模糊搜索（前 100 条）
+- **一键复习**：任何关联了单词的任务，可点击「▶ 一键复习」按钮，直接拉起针对这些单词的复习会话
+
+### 任务操作（hover 浮现）
+- **Move**：一键把任务转移到其它任意一天（含 Inbox）的下拉菜单
+- **Advanced 编辑**：打开任务详情模态框
+- **Delete**：二次确认后删除
+
+### 闭环学习自动完成（核心机制）
+- 从周计划触发关联单词的复习后，`customReviewMetadata` 保存 `{taskId, dayOfWeek, planId}`
+- 复习会话提交（`/api/review/submit`）成功后，App.tsx 自动：
+  1. 把对应任务标记为 `completed: true`
+  2. 重新计算当日整体打卡状态（所有任务都完成则 `day.completed = true`）
+  3. 写回 localStorage
+- 然后自动跳回 plans 视图（而不是 dashboard），形成「计划 → 复习 → 状态反馈」闭环
+
+### 仪表盘联动
+- Dashboard 新增「📅 定制你的专属周日程计划」入口卡片（紫蓝色渐变，足球规则卡片之下）
+- Review 视图无待复习词时，新增「📅 定制专属周计划」次按钮，引导用户去规划
+- WordList 顶部新增「已深度联动：个性化周日程计划」tip bar，可一键跳转
+
+### 多语言（6 种 UI 全覆盖）
+- LearningPlans 组件内置 `localT` × 6 语言（zh/en/ja/es/fr/pt）—— **不依赖主 translations.ts**，独立维护
+- `configT`（任务类型管理文案）× 6 语言
+- `DAYS_NAME` 每天的星期名 × 6 语言
+- 日期格式化按 UI 语言使用对应 locale（zh-CN / ja-JP / es-ES / fr-FR / pt-PT / en-US）
+
+### 触控友好与响应式
+- 任务条目、复选框、按钮均 ≥ 44px 触摸区域
+- 长文本使用 `line-clamp-1` / `truncate` 优雅截断
+- 移动端：看板横向滚动 snap，左侧面板堆叠在顶部
+
+### 数据库持久化（v1.9.1 引入）
+- v1.9 初版所有数据存 localStorage（`ebbinghaus_learning_plans` + `ebbinghaus_task_types`），存在多设备不同步、易丢失等问题
+- v1.9.1 把全部周计划数据落到 **Supabase Postgres（生产）+ 本地 JSON（开发）** 双路径，与 `words` / `histories` 架构一致
+- 新增 4 张表（详见 §3.4）：
+  - `learning_plans` — 计划主表
+  - `learning_tasks` — 任务子表（含 `linked_word_ids TEXT[]` 数组列）
+  - `learning_day_meta` — 休息日 / 整日打卡（复合主键 `plan_id + day_of_week`）
+  - `user_task_types` — 用户自定义任务类型配置（复合主键 `user_id + id`）
+- **localStorage 一次性迁移**：用户登录后若检测到 `ebbinghaus_learning_plans` 存在，自动调 `POST /api/plans/migrate` 上传到数据库，成功后清空本地并打标 `ebbinghaus_plans_migrated=true`（幂等，失败时下次启动重试）
+- 所有前端读写改为 API 调用，`LearningPlans.tsx` 重构为受控组件（10 个 props 回调）
+
+### 周计划 API 端点（v1.9.1）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/plans` | 列出当前用户所有计划（含 tasks + dayMeta，一次返回）|
+| POST | `/api/plans` | 创建新计划（支持含初始任务批量上传）|
+| PATCH | `/api/plans/:id` | 更新计划元信息（title/status/日期）|
+| DELETE | `/api/plans/:id` | 删除计划（CASCADE 删 tasks + dayMeta）|
+| POST | `/api/plans/:id/tasks` | 新增/更新任务（body: `{task, dayOfWeek, sortOrder}`）|
+| PATCH | `/api/plans/:id/tasks/:taskId` | 更新任务局部字段 |
+| DELETE | `/api/plans/:id/tasks/:taskId` | 删除任务 |
+| PATCH | `/api/plans/:id/days/:day` | 更新某天元信息（isRestDay/completed，day ∈ 1-7）|
+| GET | `/api/user/task-types` | 获取用户的任务类型配置（首次为空时自动种默认 4 种）|
+| PUT | `/api/user/task-types` | 全量替换用户任务类型配置 |
+| POST | `/api/plans/migrate` | 一次性迁移 localStorage → 数据库（幂等，按 plan ID 去重）|
+
+---
+
 ## 2. API 规格
 
 所有 API 前缀 `/api`。除注册/登录外，均需 `Authorization: Bearer <token>`。
@@ -189,6 +279,21 @@
 | POST | `/api/system/reset` | `fullReset:true` 按语言清空词库（不塞种子词，可传 `language`）/ `fullReset:false` 重置时间 |
 | POST | `/api/generate-distractors` | （v1.8）辨义选择模式：为指定 wordId 生成 5 个拼写近似的干扰词，返回 `{correct, distractors[]}`。算法见 §4.2 |
 
+### 2.5 周计划（v1.9.1）
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/plans` | 列出当前用户所有计划（含 tasks + dayMeta）|
+| POST | `/api/plans` | 创建新计划（可批量上传初始任务）|
+| PATCH | `/api/plans/:id` | 更新计划元信息 |
+| DELETE | `/api/plans/:id` | 删除计划（CASCADE 删子表）|
+| POST | `/api/plans/:id/tasks` | 新增/更新任务 |
+| PATCH | `/api/plans/:id/tasks/:taskId` | 更新任务局部字段 |
+| DELETE | `/api/plans/:id/tasks/:taskId` | 删除任务 |
+| PATCH | `/api/plans/:id/days/:day` | 更新某天元信息（day ∈ 1-7）|
+| GET | `/api/user/task-types` | 获取任务类型配置 |
+| PUT | `/api/user/task-types` | 全量替换任务类型配置 |
+| POST | `/api/plans/migrate` | 一次性迁移 localStorage → 数据库（幂等）|
+
 ---
 
 ## 3. 数据模型
@@ -211,7 +316,11 @@
   "systemOffsetMs": 0,
   "users": [...],
   "sessions": [...],
-  "languageSettings": [...]
+  "languageSettings": [...],
+  "learningPlans": [...],     // v1.9.1
+  "learningTasks": [...],     // v1.9.1
+  "learningDayMeta": [...],   // v1.9.1
+  "userTaskTypes": [...]      // v1.9.1
 }
 ```
 
@@ -219,6 +328,70 @@
 - **前端 / 本地 JSON**：camelCase（如 `nextReviewAt`）
 - **Supabase Postgres**：snake_case（如 `next_review_at`）
 - 转换函数：`toDbXxx` / `fromDbXxx`（见 [serverDb.ts](file:///serverDb.ts) §数据映射）
+
+---
+
+## §3.4 周计划数据模型（v1.9.1）
+
+完整建表 SQL 见 [supabase-schema.sql](file:///supabase-schema.sql) §7。
+
+### learning_plans（计划主表）
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | TEXT | PK | 格式：`plan-{timestamp}` |
+| `user_id` | TEXT | FK → users, NOT NULL | 所有者 |
+| `title` | TEXT | NOT NULL | 计划名称 |
+| `start_date` | TEXT | NOT NULL | YYYY-MM-DD (周一) |
+| `end_date` | TEXT | NOT NULL | YYYY-MM-DD (周日) |
+| `status` | TEXT | NOT NULL, CHECK in (`active`,`archived`) | 状态 |
+| `created_at` | TEXT | NOT NULL | ISO 时间戳 |
+| `updated_at` | TEXT | NOT NULL | ISO 时间戳（任务变化时同步更新）|
+
+### learning_tasks（任务子表）
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | TEXT | PK | 格式：`task-{timestamp}` |
+| `plan_id` | TEXT | FK → learning_plans ON DELETE CASCADE, NOT NULL | 所属计划 |
+| `user_id` | TEXT | FK → users, NOT NULL（冗余）| 便于 RLS + 跨计划统计 |
+| `day_of_week` | SMALLINT | NOT NULL, CHECK 0-7 | 0=Inbox, 1-7=周一到周日 |
+| `type` | TEXT | NOT NULL | 任务类型 ID |
+| `title` | TEXT | NOT NULL | 任务标题 |
+| `description` | TEXT | NULL | 可选描述 |
+| `completed` | BOOLEAN | NOT NULL DEFAULT FALSE | 完成状态 |
+| `linked_word_ids` | TEXT[] | DEFAULT `'{}'` | 关联单词 ID 数组（Postgres 原生数组类型）|
+| `sort_order` | INTEGER | NOT NULL DEFAULT 0 | 同一天内的排序 |
+| `created_at` | TEXT | NOT NULL | ISO 时间戳 |
+
+### learning_day_meta（日级元信息）
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `plan_id` | TEXT | FK → learning_plans ON DELETE CASCADE | 所属计划 |
+| `user_id` | TEXT | FK → users ON DELETE CASCADE | 所有者 |
+| `day_of_week` | SMALLINT | CHECK 1-7 | **不含 0**（Inbox 不打卡）|
+| `is_rest_day` | BOOLEAN | DEFAULT FALSE | 休息日标记 |
+| `completed` | BOOLEAN | DEFAULT FALSE | 整日打卡 |
+| — | — | PRIMARY KEY (plan_id, day_of_week) | 复合主键 |
+
+### user_task_types（任务类型配置）
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `user_id` | TEXT | FK → users ON DELETE CASCADE | 所有者 |
+| `id` | TEXT | NOT NULL | 类型 ID |
+| `label` | TEXT | NOT NULL | 显示名 |
+| `icon` | TEXT | NOT NULL | Lucide 图标名 |
+| `color` | TEXT | NOT NULL | 主题色名 |
+| `sort_order` | INTEGER | DEFAULT 0 | 显示顺序 |
+| — | — | PRIMARY KEY (user_id, id) | 每个用户独立类型集 |
+
+### DAO 函数（[api/index.ts](file:///api/index.ts)）
+- `listUserPlans(userId)` — 一次返回所有计划（含 tasks + meta）
+- `createPlanWithContent(userId, planInput)` — 批量插入计划 + 任务 + 元数据
+- `updatePlanMeta(userId, planId, updates)` — 更新计划元信息
+- `deletePlan(userId, planId)` — CASCADE 删子表
+- `upsertTask(userId, planId, task, dayOfWeek, sortOrder)` — 新增或更新任务
+- `deleteTask(userId, planId, taskId)` — 删任务
+- `upsertDayMeta(userId, planId, dayOfWeek, meta)` — upsert 日级元信息（onConflict `plan_id,day_of_week`）
+- `getUserTaskTypes(userId)` / `setUserTaskTypes(userId, types)` — 任务类型配置（首次空时自动种默认 4 种）
 
 ---
 
@@ -305,6 +478,7 @@
 | `WordList` | [src/components/WordList.tsx](file:///src/components/WordList.tsx) | 词库 CRUD + 批量导入 + 导入进度条 + 正确分页文案 + v1.8.2 语言筛选下空词库提示 |
 | `ReviewSession` | [src/components/ReviewSession.tsx](file:///src/components/ReviewSession.tsx) | 复习会话 + 错词重考 + Unicode-safe 例句挖空 |
 | `Profile` | [src/components/Profile.tsx](file:///src/components/Profile.tsx) | 资料 + 改密码 + 勋章墙（level 入口已移除）|
+| `LearningPlans` | [src/components/LearningPlans.tsx](file:///src/components/LearningPlans.tsx) | v1.9 周计划看板（WeekTodo 风格）+ 任务类型管理 + 词库关联 + 复习闭环 |
 - FootballRules.tsx（v1.7）
 
 ---
@@ -374,6 +548,27 @@
 ---
 
 ## 8. 版本历史
+
+**v1.9.1（2026-07-20）**：周计划数据落到数据库
+- 🔴 数据库：新增 4 张表（`learning_plans` / `learning_tasks` / `learning_day_meta` / `user_task_types`），[supabase-schema.sql](file:///supabase-schema.sql) §7
+- 🔴 DAO：[api/index.ts](file:///api/index.ts) 新增 8 个 Supabase+本地 JSON 双路径函数（`listUserPlans` / `createPlanWithContent` / `upsertTask` / `upsertDayMeta` 等）
+- 🔴 API：新增 11 个 REST 端点（`/api/plans/*` + `/api/user/task-types` + `/api/plans/migrate`），与现有鉴权约定一致
+- 🔴 前端：[src/App.tsx](file:///src/App.tsx) 新增 `plans` / `taskTypes` state、`fetchPlansAndTypes` + 8 个 CRUD handler；`loadAllData` 并行加载计划；闭环逻辑（复习后自动完成任务）改为调 PATCH API
+- 🔴 前端：[src/components/LearningPlans.tsx](file:///src/components/LearningPlans.tsx) 重构为**受控组件**，移除所有 `localStorage` 读写，改为 10 个 props 回调
+- 🟢 数据迁移：用户登录后自动检测 `localStorage.ebbinghaus_learning_plans`，调 `/api/plans/migrate` 上传到数据库（幂等，按 plan ID 去重），成功后清空并打标
+- 🛠 兼容：[data/db.json](file:///data/db.json) 老文件自动补 4 个新字段（`learningPlans/learningTasks/learningDayMeta/userTaskTypes`），无需手动迁移
+- ✅ 端到端测试：11 项 API 流程全绿（注册/列空/创建/列单/PATCH任务/列已完成/PATCH休息日/任务类型/删除/CASCADE/恢复空）
+
+**v1.9（2026-07-20）**：周计划学习日程系统（WeekTodo 风格看板）
+- 🔴 新功能：第三种顶层视图「周计划」上线。8 列看板（Inbox + 周一~周日），横向滚动 snap，当日列高亮
+- 🔴 新功能：任务类型完全自定义。13 款 Lucide 图标 + 10 种主题色组合，用户可随意增删/重命名，持久化到 localStorage
+- 🔴 新功能：词库深度联动。任意任务类型可关联任意单词（跨语言），「▶ 一键复习」直接拉起针对关联词的复习会话
+- 🔴 新功能：闭环学习自动完成。从周计划触发的复习会话提交后，系统自动把对应任务标为已完成，并更新当日整体打卡状态，然后跳回 plans 视图
+- 🟢 UX：Dashboard 新增「📅 定制你的专属周日程计划」紫蓝色入口卡片
+- 🟢 UX：WordList 顶部新增 tip bar 引导跳转到周计划
+- 🟢 UX：Review 空态新增次按钮「📅 定制专属周计划」
+- 🟢 i18n：LearningPlans 组件内置 6 种 UI 语言（zh/en/ja/es/fr/pt）独立翻译表，不依赖主 translations.ts
+- 🛠 工程：[src/types.ts](file:///src/types.ts) 新增 `LearningPlan` / `DayPlan` / `LearningTask` / `TaskType` 类型；App.tsx 新增 `allWords` / `customReviewWords` / `customReviewMetadata` 状态
 
 **v1.8.2（2026-07-19）**：WordList 语言筛选下空词库温和提示
 - 🟢 UX：当用户切到具体目标语言（English/Japanese/Spanish/French/Portuguese）但该语言下没有词时，词库页顶部显示琥珀色提示条，避免误以为数据丢失

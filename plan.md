@@ -125,6 +125,32 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.1（2026-07-20）：周计划数据落到数据库
+- ✅ [supabase-schema.sql](file:///supabase-schema.sql) 新增 §7，包含 4 张表（`learning_plans` / `learning_tasks` / `learning_day_meta` / `user_task_types`）+ 4 个索引
+- ✅ [api/index.ts](file:///api/index.ts) 新增 8 个 DAO 函数（`listUserPlans` / `createPlanWithContent` / `updatePlanMeta` / `deletePlan` / `upsertTask` / `deleteTask` / `upsertDayMeta` / `getUserTaskTypes` / `setUserTaskTypes`），全部支持 Supabase + 本地 JSON 双路径
+- ✅ `WordDbSchema` 接口扩展 4 个可选字段；`initLocalDb` 老文件自动补字段（无需手动迁移）
+- ✅ 新增 11 个 REST 端点：`GET/POST /api/plans`、`PATCH/DELETE /api/plans/:id`、`POST/PATCH/DELETE /api/plans/:id/tasks/:taskId`、`PATCH /api/plans/:id/days/:day`、`GET/PUT /api/user/task-types`、`POST /api/plans/migrate`
+- ✅ [src/App.tsx](file:///src/App.tsx) 新增 `plans` / `taskTypes` state、`fetchPlansAndTypes`、`migrateLocalPlansIfNeeded`、8 个 CRUD handler；`loadAllData` 并行加载计划；`handleSubmitReview` 闭环改为调 PATCH API
+- ✅ [src/components/LearningPlans.tsx](file:///src/components/LearningPlans.tsx) 重构为受控组件：移除所有 `localStorage` 读写，props 接口扩展到 13 项（新增 10 个 CRUD 回调 + `plans` / `taskTypes` 数据），所有业务函数改为 `async` + 调 props 回调
+- ✅ localStorage 一次性迁移：用户登录后检测到老数据自动 POST 到 `/api/plans/migrate`，成功后清空 + 打标 `ebbinghaus_plans_migrated=true`（幂等）
+- ✅ 端到端测试：11 项 API 流程全绿（注册→列空→创建计划→列出→PATCH任务→查完成状态→PATCH休息日→GET任务类型→DELETE计划→CASCADE验证→恢复空）
+- ✅ tsc 类型检查：本次改动 0 错误（剩余 ReviewSession QueueWord 错误为历史遗留）
+
+### v1.9（2026-07-20）：周计划学习日程系统（WeekTodo 风格看板）
+- ✅ 新增 [src/components/LearningPlans.tsx](file:///src/components/LearningPlans.tsx)（~1500 行）：8 列横向滚动看板 + 左侧计划列表 + 任务类型管理模态框 + 任务编辑器（含词库关联搜索）
+- ✅ 扩展 [src/types.ts](file:///src/types.ts) 新增 `LearningPlan` / `DayPlan` / `LearningTask` / `TaskType` 四个类型
+- ✅ App.tsx 新增 `plans` 视图路由 + `allWords` 跨语言词库快照 + `customReviewWords` / `customReviewMetadata` 状态
+- ✅ App.tsx `handleSubmitReview` 增加自动闭环：复习完成后写回 localStorage 把对应任务标记为已完成
+- ✅ App.tsx 新增 `handleStartCustomReview` 方法，从周计划拉起针对关联词的复习会话
+- ✅ Navbar 新增「📅 周计划」Tab（CalendarRange 图标）
+- ✅ Dashboard 新增「📅 定制你的专属周日程计划」紫蓝色入口卡片
+- ✅ WordList 新增顶部 tip bar 引导跳转到周计划（onViewPlans prop）
+- ✅ Review 空态新增「📅 定制专属周计划」次按钮
+- ✅ 6 种 UI 语言独立翻译表（zh/en/ja/es/fr/pt），含星期名、任务类型管理文案、所有 UI 文案
+- ✅ localStorage 持久化：`ebbinghaus_learning_plans` + `ebbinghaus_task_types`
+- ✅ tsc 类型检查：本次新增/修改的所有文件 0 错误（剩余 ReviewSession QueueWord 错误为历史遗留）
+- ✅ dev server 启动验证：8 秒后端口 3003 正常响应
+
 ### v1.8.2（2026-07-19）：WordList 语言筛选下空词库温和提示 + README 重写
 - ✅ WordList 顶部条件渲染琥珀色提示条：`selectedLanguage !== "All" && words.length === 0`
 - ✅ 新增 i18n key `emptyLanguageHint` × 6 种语言（zh/en/ja/es/fr/pt）
