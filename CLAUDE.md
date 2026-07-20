@@ -149,6 +149,73 @@ npm run start
   - type: `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore`
 - 合并到 `main` / `develop` 前**必须征求用户确认**
 
+### 6.1 Git Flow SOP（每次新任务必走的 6 步）
+
+> ⚠️ **触发条件**：用户下达任何会产生代码改动的任务时，**必须按此 SOP 执行**，不要直接在 `main` 分支上工作。
+
+| 步骤 | 动作 | 命令模板 | 备注 |
+|---|---|---|---|
+| **1. 检查环境** | 查看当前分支与状态 | `git status && git branch -vv` | 确认是否在 main 上、工作区是否干净 |
+| **2. 同步主干** | 拉最新 main | `git checkout main && git pull origin main` | 避免基于旧代码开工 |
+| **3. 拉特性分支** | 从 main 拉出 feature 分支 | `git checkout -b feature/<简洁英文描述>` | 命名：`feature/learning-plans-system`、`hotfix/auth-typo`，避免拼音 |
+| **4. 开发+提交** | 按文件名逐个 `git add`（**不要**用 `-A`/`.`）<br>用 Angular 规范写提交消息 | `git add src/xxx api/yyy`<br>`git commit -F /tmp/msg.txt` | 敏感文件（`.env`、`credentials`）绝不提交；HEREDOC 在 sandbox 里可能折行失效，优先用 `commit -F` |
+| **5. 推送远程** | push 到 feature 分支 | `git push -u origin feature/<branch-name>` | 此步骤**不合并** main |
+| **6. 合并 main** | ⚠️ **必须先征求用户确认**<br>确认后用 `--no-ff` 保留分支历史 | `git checkout main && git merge --no-ff feature/<branch> -m "Merge branch '...'" && git push origin main` | 合并后清理分支：<br>`git branch -d feature/<branch> && git push origin --delete feature/<branch>` |
+
+### 6.2 关键约束（CLAUDE.md 系统提示词级别）
+
+> 🔒 **以下任何一条违反，都视为 Git Flow 失败**：
+
+1. **绝不**在 `main` 分支上直接 `git commit`
+2. **绝不**使用 `git push --force` 到 main / develop
+3. **绝不**未经用户确认就合并到 main / develop
+4. **绝不**用 `git add .` / `git add -A`（容易带入 `.env` 或大文件），必须按文件名精确添加
+5. **绝不**运行 `git config` 修改全局配置
+6. **绝不**主动 `git commit` 除非用户明确要求（"提交"/"commit"/"走 Git 流程" 等才算明确要求）
+
+### 6.3 新 session 启动时的自检
+
+新对话开始时，若用户下达**会产生代码改动的任务**，**第一动作**应该是：
+
+```bash
+git status && git branch -vv && git log --oneline -5
+```
+
+然后**主动向用户报告**当前 Git 状态，例如：
+
+> 当前在 `main` 分支，工作区干净，最近一次提交是 `51b95c6 Merge branch 'feature/learning-plans-system'`。按 Git Flow 规范，我会在做完改动后从 main 拉出 `feature/<描述>` 分支再提交。是否同意？
+
+这样做的好处：
+- 防止在错误的分支上工作
+- 防止带病提交（旧代码、未 stash 的改动）
+- 让用户预判分支命名
+
+### 6.4 提交消息规范（Angular）
+
+**格式**：`<type>(<scope>): <subject>`（subject 用中文，简洁一句话）
+
+| type | 场景 |
+|---|---|
+| `feat` | 新功能（如 `feat(learning-plans): ...`）|
+| `fix` | Bug 修复（如 `fix(auth): 修复登录失败`）|
+| `docs` | 仅文档（如 `docs: 同步 v1.8.2 文档`）|
+| `refactor` | 重构（无功能变化）|
+| `style` | 代码风格（不影响逻辑）|
+| `test` | 测试相关 |
+| `chore` | 构建/依赖/杂项 |
+
+**scope** 常用值：`auth` / `word-list` / `review` / `learning-plans` / `dashboard` / `navbar` / `i18n` / `db` / `api` / `e2e`
+
+**正文**（可选）：空一行后写详细描述，每行 ≤72 字符。
+
+**示例**：
+```
+feat(learning-plans): 引入周计划学习日程系统并落到数据库
+
+v1.9: UI 与导航（LearningPlans + Dashboard 应用拓展中心 + Navbar 下拉菜单）
+v1.9.1: 数据库持久化（4 张表 + 9 个 DAO + 11 个 API 端点 + 迁移逻辑）
+```
+
 ## 7. 开发约定
 
 ### 最小改动原则（YAGNI）

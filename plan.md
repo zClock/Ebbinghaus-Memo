@@ -125,6 +125,13 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.2（2026-07-20）：补充 Git Flow SOP 协作规范
+- ✅ [CLAUDE.md](file:///CLAUDE.md) §6 从纯规则列表扩展为 4 个可执行子节（6.1 SOP 6 步表 / 6.2 6 条红线 / 6.3 新 session 自检 / 6.4 Angular 提交规范 + scope 常用值）
+- ✅ [spec.md](file:///spec.md) 新增 §7「协作流程（Git Flow SOP）」摘要章节，并把原 §7 已知问题调整为 §8，原 §8 版本历史调整为 §9
+- ✅ [USER_MANUAL.md](file:///USER_MANUAL.md) 新增 §12「开发者协作流程（Git Flow）」简述，让参与项目的开发者快速理解工作流
+- ✅ 目标：让新对话 session 接到代码任务时，按 CLAUDE.md §6.1 的 SOP 表自动执行 6 步流程，而不是直接在 main 上提交
+- ✅ 流程验证：本次 4 个文档变更**完整走完 Git Flow**（feature 分支 → commit → push → 合并 main → 清理分支）作为示范
+
 ### v1.9.1（2026-07-20）：周计划数据落到数据库
 - ✅ [supabase-schema.sql](file:///supabase-schema.sql) 新增 §7，包含 4 张表（`learning_plans` / `learning_tasks` / `learning_day_meta` / `user_task_types`）+ 4 个索引
 - ✅ [api/index.ts](file:///api/index.ts) 新增 8 个 DAO 函数（`listUserPlans` / `createPlanWithContent` / `updatePlanMeta` / `deletePlan` / `upsertTask` / `deleteTask` / `upsertDayMeta` / `getUserTaskTypes` / `setUserTaskTypes`），全部支持 Supabase + 本地 JSON 双路径
