@@ -401,16 +401,17 @@ export default function App() {
 
   // 全量替换任务类型配置
   const handleSaveTaskTypes = async (types: any[]): Promise<void> => {
-    try {
-      const res = await fetch("/api/user/task-types", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(types)
-      });
-      if (res.ok) await fetchPlansAndTypes();
-    } catch (err) {
-      console.error("Failed to save task types:", err);
+    const res = await fetch("/api/user/task-types", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify(types)
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
     }
+    // 写入成功后再刷新一次,让 props 回流最新数据
+    await fetchPlansAndTypes();
   };
 
   // 1. Add word

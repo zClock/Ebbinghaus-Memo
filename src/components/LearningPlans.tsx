@@ -37,6 +37,7 @@ interface TaskTypeConfig {
   label: string;
   icon: string;
   color: string;
+  sortOrder?: number;
 }
 
 const DEFAULT_TASK_TYPES: TaskTypeConfig[] = [
@@ -549,8 +550,16 @@ export default function LearningPlans({
   const currentPlan = plans.find(p => p.id === selectedPlanId) || null;
 
   // 保存任务类型配置(原 saveTaskTypes)
-  const saveTaskTypes = (newTypes: TaskTypeConfig[]) => {
-    onSaveTaskTypes(newTypes);
+  // 改为 async,让调用方能感知后端写入完成;失败时提示用户
+  const saveTaskTypes = async (newTypes: TaskTypeConfig[]): Promise<boolean> => {
+    try {
+      await onSaveTaskTypes(newTypes);
+      return true;
+    } catch (err) {
+      console.error("Failed to save task types:", err);
+      alert("保存任务类型失败,请检查网络后重试");
+      return false;
+    }
   };
 
   const handleCreatePlan = async (e: React.FormEvent) => {
@@ -733,16 +742,7 @@ export default function LearningPlans({
     await onDeleteTask(currentPlan.id, taskId);
   };
 
-  const handleDeleteTaskType = (id: string) => {
-    if (taskTypes.length <= 1) {
-      alert(configT[lang].cantDeleteLast);
-      return;
-    }
-    const updated = taskTypes.filter(t => t.id !== id);
-    saveTaskTypes(updated);
-  };
-
-  const handleAddTaskType = (e: React.FormEvent) => {
+  const handleAddTaskType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTypeName.trim()) return;
 
@@ -751,16 +751,32 @@ export default function LearningPlans({
       id: newId,
       label: newTypeName.trim(),
       icon: newTypeIcon,
-      color: newTypeColor
+      color: newTypeColor,
+      // 显式带上 sortOrder,避免依赖后端补默认值
+      sortOrder: taskTypes.length
     };
 
-    saveTaskTypes([...taskTypes, newType]);
-    setNewTypeName("");
+    console.log("[TaskTypes] 新增类型:", newType, "当前数量:", taskTypes.length);
+    const ok = await saveTaskTypes([...taskTypes, newType]);
+    console.log("[TaskTypes] 保存结果:", ok);
+    if (ok) {
+      setNewTypeName("");
+      console.log("[TaskTypes] 已清空输入框,等待 props 回流");
+    }
   };
 
-  const handleResetTaskTypes = () => {
+  const handleDeleteTaskType = async (id: string) => {
+    if (taskTypes.length <= 1) {
+      alert(configT[lang].cantDeleteLast);
+      return;
+    }
+    const updated = taskTypes.filter(t => t.id !== id);
+    await saveTaskTypes(updated);
+  };
+
+  const handleResetTaskTypes = async () => {
     if (confirm("确定要恢复默认任务类型吗？自定义的类型将被删除。")) {
-      saveTaskTypes(DEFAULT_TASK_TYPES);
+      await saveTaskTypes(DEFAULT_TASK_TYPES);
     }
   };
 
