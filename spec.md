@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.1（2026-07-20，周计划数据落到数据库）
+- **当前版本**：v1.9.2（2026-07-20，补充 Git Flow SOP 协作规范）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -511,43 +511,60 @@
 
 ---
 
-## 7. 已知问题与限制
+## 7. 协作流程（Git Flow SOP）
 
-### 7.1 TypeScript 类型错误（不影响运行）
+> 详见 [CLAUDE.md §6](file:///CLAUDE.md#L141)。核心要点：
+
+- **分支策略**：禁止直接提交 `main`/`develop`；新功能走 `feature/<描述>`，紧急修复走 `hotfix/<描述>`
+- **6 步 SOP**：①检查环境 → ②同步主干 → ③拉特性分支 → ④开发+提交 → ⑤push → ⑥合并 main（需用户确认）
+- **提交规范**：Angular 格式 `<type>(<scope>): <subject>`，详见 [CLAUDE.md §6.4](file:///CLAUDE.md#L211)
+- **关键红线**：绝不直接 push main、绝不 force push、绝不 `git add .`、合并前必须用户确认
+- **新 session 自检**：接到代码任务第一动作是 `git status && git branch -vv && git log --oneline -5` 并向用户报告
+
+## 8. 已知问题与限制
+
+### 8.1 TypeScript 类型错误（不影响运行）
 `npm run lint` 会报错，原因：
 - [src/components/WordList.tsx](file:///src/components/WordList.tsx) 引用了 `translations.ts` 中**不存在的字段**（如 `addSuccessMsg` / `regenSuccessMsg` / `wordListChartTitle` 等）
 - [src/lib/translations.ts](file:///src/lib/translations.ts) 的 `TranslationSet` 接口新增了字段，但 5 种语言的翻译对象没有同步补全
 
 **影响**：仅 `tsc` 报错；`tsx` 运行时不做严格检查，应用可正常启动。
 
-### 7.2 密码哈希弱
+### 8.2 密码哈希弱
 - 使用 `crypto.createHash("sha256")` 单次哈希（无 salt、无慢哈希）
 - **不应**在生产环境直接暴露，建议迁移到 bcrypt/argon2
 
-### 7.3 AI 模型名写死
+### 8.3 AI 模型名写死
 - `gemini-3.5-flash` / `gemini-3.1-flash-lite` 硬编码在代码里，未来 Gemini 升级需手动改
 
-### 7.4 本地数据库非并发安全
+### 8.4 本地数据库非并发安全
 - `data/db.json` 是全量读写，多请求并发时有覆盖风险
 - 生产建议切到 Supabase
 
-### 7.5 时间旅行按用户隔离吗
+### 8.5 时间旅行按用户隔离吗
 - **否**。`system_offset_ms` 是全局配置（`system_config` 表），所有用户共享同一虚拟时间
 - 多租户场景下这是个语义问题
 
-### 7.6 Vercel 单文件约束（v1.3 引入）
+### 8.6 Vercel 单文件约束（v1.3 引入）
 - `api/index.ts` 必须是单文件 serverless function（业务逻辑 + 数据库适配层全部内联）
 - 拆分多文件会导致 `ERR_MODULE_NOT_FOUND`
 - 代价：`api/index.ts` 文件较大（~1800 行），后续可考虑用 esbuild bundle 优化
 
-### 7.7 集成测试暂停（v1.3 引入，v1.6 已用 E2E 替代）
+### 8.7 集成测试暂停（v1.3 引入，v1.6 已用 E2E 替代）
 - `tests/integration/firebase-removal.test.ts` 当前 `.skip`
 - 原因：serverDb 内联到 `api/index.ts` 后无法 vi.mock
 - 替代方案：新集成测试改为基于真实本地 JSON 的端到端测试
 
 ---
 
-## 8. 版本历史
+## 9. 版本历史
+
+**v1.9.2（2026-07-20）**：补充 Git Flow SOP 协作规范
+- 📄 文档：[CLAUDE.md](file:///CLAUDE.md) §6 新增 4 个子节（6.1 SOP / 6.2 关键约束 / 6.3 新 session 自检 / 6.4 提交消息规范），把"规则"扩展为"可执行操作手册"
+- 📄 文档：[spec.md](file:///spec.md) 新增 §7「协作流程（Git Flow SOP）」摘要章节，并整理原 §7「已知问题」为 §8（原 §8「版本历史」为 §9）
+- 📄 文档：[plan.md](file:///plan.md) 归档 v1.9.2 文档同步任务
+- 📄 文档：[USER_MANUAL.md](file:///USER_MANUAL.md) §12 补充「开发者协作流程」说明
+- 🎯 目的：让新对话 session 接到代码任务时，能自动按 CLAUDE.md §6.1 走完 6 步 SOP，避免直接在 main 上提交
 
 **v1.9.1（2026-07-20）**：周计划数据落到数据库
 - 🔴 数据库：新增 4 张表（`learning_plans` / `learning_tasks` / `learning_day_meta` / `user_task_types`），[supabase-schema.sql](file:///supabase-schema.sql) §7

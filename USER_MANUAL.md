@@ -19,6 +19,7 @@
 - [9. 管理员专属功能](#9-管理员专属功能)
 - [10. FIFA 足球规则科普讲堂](#10-fifa-足球规则科普讲堂)
 - [11. 常见问题（FAQ）](#11-常见问题faq)
+- [12. 开发者协作流程（Git Flow）](#12-开发者协作流程git-flow)
 
 ---
 
@@ -686,6 +687,54 @@
 ### Q8：管理员功能（时光机 / 数据库重置）普通用户为什么看不到？
 
 **A：** 这两个功能属于高危操作，仅对管理员邮箱开放。普通用户仪表盘不会显示这两块卡片，避免误操作带来数据风险。如果你确实需要这些功能，请联系管理员。
+
+---
+
+## 12. 开发者协作流程（Git Flow）
+
+> 本节面向参与本项目开发的工程师 / AI Agent，普通用户无需关心。
+
+### 12.1 分支策略
+
+本项目遵循标准 Git Flow：
+
+| 分支 | 用途 |
+|---|---|
+| `main` | 生产分支，禁止直接提交。每次合并自动触发 Vercel 部署 |
+| `develop` | 开发集成分支（预留，目前主要在 main 上集成）|
+| `feature/<描述>` | 新功能分支，从 `main` 拉出，完成后合回 |
+| `hotfix/<描述>` | 紧急修复分支，从 `main` 拉出，合回 `main` |
+
+### 12.2 提交规范（Angular）
+
+格式：`<type>(<scope>): <subject>`
+
+- **type**：`feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore`
+- **scope**：`auth` / `word-list` / `review` / `learning-plans` / `dashboard` / `navbar` / `i18n` / `db` / `api` / `e2e`
+- **subject**：一句话简洁描述（中文）
+
+示例：`feat(learning-plans): 引入周计划学习日程系统并落到数据库`
+
+### 12.3 完整流程（6 步 SOP）
+
+1. 检查环境：`git status && git branch -vv`
+2. 同步主干：`git checkout main && git pull origin main`
+3. 拉特性分支：`git checkout -b feature/<描述>`
+4. 开发 + 提交：按文件名逐个 `git add`（不要用 `-A`/`.`），用 `git commit -F` 避免转义问题
+5. 推送：`git push -u origin feature/<分支>`
+6. 合并 main（**需用户确认**）：`git checkout main && git merge --no-ff feature/<分支>` → `git push origin main` → 清理分支
+
+### 12.4 关键红线
+
+- ❌ 绝不在 `main` 上直接 commit
+- ❌ 绝不 force push 到 main / develop
+- ❌ 绝不未经用户确认就合并 main
+- ❌ 绝不用 `git add .` / `-A`（容易带入 `.env`）
+- ❌ 绝不修改 `git config` 全局配置
+
+### 12.5 完整规范
+
+详见 [CLAUDE.md §6](file:///CLAUDE.md#L141)。
 
 ---
 
