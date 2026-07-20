@@ -473,7 +473,7 @@ const localT: Record<string, Record<string, string>> = {
 export default function LearningPlans({
   words,
   plans,
-  taskTypes,
+  taskTypes: propTaskTypes,
   onCreatePlan,
   onUpdatePlan,
   onDeletePlan,
@@ -487,6 +487,22 @@ export default function LearningPlans({
   useTargetUi = false
 }: LearningPlansProps) {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+
+  // 任务类型: 本地 state 用于乐观更新 + 立即 UI 反馈
+  // propTaskTypes 是 App.tsx fetch 的数据源,回流时同步到本地
+  const [taskTypes, setTaskTypes] = useState<TaskTypeConfig[]>(propTaskTypes);
+  // 操作进行中的 loading 状态(用于按钮反馈)
+  const [isSavingType, setIsSavingType] = useState(false);
+  // 轻量 toast 提示(操作成功/失败反馈)
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  useEffect(() => {
+    setTaskTypes(propTaskTypes);
+  }, [propTaskTypes]);
 
   // 默认选中第一个 active 计划(只在 plans 变化时初始化一次)
   useEffect(() => {
@@ -549,15 +565,25 @@ export default function LearningPlans({
 
   const currentPlan = plans.find(p => p.id === selectedPlanId) || null;
 
-  // 保存任务类型配置(原 saveTaskTypes)
-  // 改为 async,让调用方能感知后端写入完成;失败时提示用户
-  const saveTaskTypes = async (newTypes: TaskTypeConfig[]): Promise<boolean> => {
+  // 保存任务类型配置(乐观更新版)
+  // 先立即更新本地 state(用户立刻看到变化),再异步调 API
+  // API 失败时回滚到之前的状态并 toast 提示
+  const saveTaskTypes = async (newTypes: TaskTypeConfig[], successMsg?: string): Promise<boolean> => {
+    const prevTypes = taskTypes;
+    // 乐观更新: 立即让 UI 反映新状态
+    setTaskTypes(newTypes);
+    setIsSavingType(true);
     try {
       await onSaveTaskTypes(newTypes);
+      setIsSavingType(false);
+      if (successMsg) showToast(successMsg, "success");
       return true;
     } catch (err) {
       console.error("Failed to save task types:", err);
-      alert("保存任务类型失败,请检查网络后重试");
+      // 回滚
+      setTaskTypes(prevTypes);
+      setIsSavingType(false);
+      showToast("保存失败,已回滚", "error");
       return false;
     }
   };
@@ -745,6 +771,7 @@ export default function LearningPlans({
   const handleAddTaskType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTypeName.trim()) return;
+    if (isSavingType) return; // 防止重复点击
 
     const newId = "type-" + Date.now();
     const newType: TaskTypeConfig = {
@@ -756,12 +783,12 @@ export default function LearningPlans({
       sortOrder: taskTypes.length
     };
 
-    console.log("[TaskTypes] 新增类型:", newType, "当前数量:", taskTypes.length);
-    const ok = await saveTaskTypes([...taskTypes, newType]);
-    console.log("[TaskTypes] 保存结果:", ok);
+    const ok = await saveTaskTypes(
+      [...taskTypes, newType],
+      `已添加「${newType.label}」类型`
+    );
     if (ok) {
       setNewTypeName("");
-      console.log("[TaskTypes] 已清空输入框,等待 props 回流");
     }
   };
 
@@ -770,13 +797,16 @@ export default function LearningPlans({
       alert(configT[lang].cantDeleteLast);
       return;
     }
+    if (isSavingType) return;
+    const target = taskTypes.find(t => t.id === id);
     const updated = taskTypes.filter(t => t.id !== id);
-    await saveTaskTypes(updated);
+    await saveTaskTypes(updated, target ? `已删除「${target.label}」` : "已删除");
   };
 
   const handleResetTaskTypes = async () => {
+    if (isSavingType) return;
     if (confirm("确定要恢复默认任务类型吗？自定义的类型将被删除。")) {
-      await saveTaskTypes(DEFAULT_TASK_TYPES);
+      await saveTaskTypes(DEFAULT_TASK_TYPES, "已恢复默认类型");
     }
   };
 
@@ -883,7 +913,30 @@ export default function LearningPlans({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Toast 提示(乐观更新成功/失败反馈) */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-20 left-1/2 -translate-x-1/2 z-[100] px-5 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-sm font-semibold ${
+              toast.type === "success"
+                ? "bg-emerald-600 text-white"
+                : "bg-rose-600 text-white"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              <X className="w-4 h-4" />
+            )}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 shrink-0">
         <div className="flex flex-wrap items-center gap-2.5">
@@ -1839,9 +1892,26 @@ export default function LearningPlans({
 
                   <button
                     type="submit"
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                    disabled={isSavingType || !newTypeName.trim()}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 ${
+                      isSavingType
+                        ? "bg-slate-400 text-slate-100 cursor-not-allowed shadow-none"
+                        : !newTypeName.trim()
+                        ? "bg-slate-300 text-slate-400 cursor-not-allowed shadow-none"
+                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/10 cursor-pointer active:scale-[0.98]"
+                    }`}
                   >
-                    {configT[lang].confirmAdd}
+                    {isSavingType ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        {configT[lang].confirmAdd}
+                      </>
+                    )}
                   </button>
                 </form>
 
@@ -1885,16 +1955,36 @@ export default function LearningPlans({
                 <button
                   type="button"
                   onClick={handleResetTaskTypes}
-                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  disabled={isSavingType}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    isSavingType
+                      ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : "bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer"
+                  }`}
                 >
                   {configT[lang].resetDefault}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowTypeConfigModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  disabled={isSavingType}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    isSavingType
+                      ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : "bg-slate-800 hover:bg-slate-900 text-white cursor-pointer active:scale-[0.98] shadow-md"
+                  }`}
                 >
-                  {configT[lang].save}
+                  {isSavingType ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                      保存中...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      {configT[lang].save}
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
