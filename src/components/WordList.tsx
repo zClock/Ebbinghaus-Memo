@@ -17,7 +17,8 @@ import {
   Upload,
   FileText,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  Calendar
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { getTranslation } from "../lib/translations";
@@ -55,6 +56,7 @@ interface WordListProps {
   }>;
   selectedLanguage: string;
   useTargetUi: boolean;
+  onViewPlans?: () => void;
 }
 
 export default function WordList({
@@ -66,6 +68,7 @@ export default function WordList({
   onImportWords,
   selectedLanguage,
   useTargetUi,
+  onViewPlans,
 }: WordListProps) {
   const t = getTranslation(selectedLanguage, useTargetUi);
 
@@ -448,6 +451,33 @@ export default function WordList({
 
   return (
     <div className="space-y-8 animate-fade-in relative">
+
+      {/* 周计划入口提示条 */}
+      {onViewPlans && (
+        <div className="bg-gradient-to-r from-indigo-50/50 to-indigo-100/30 border border-indigo-100/70 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm shadow-indigo-100/5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div className="text-center sm:text-left space-y-0.5">
+              <p className="text-xs font-bold text-slate-800">
+                {useTargetUi ? "Linked Weekly Schedule & Tasks" : "已深度联动：个性化周日程计划"}
+              </p>
+              <p className="text-[11px] text-slate-400 font-light">
+                {useTargetUi
+                  ? "Track study habits, log workouts, and select library words for custom scheduled reviews."
+                  : "支持运动、语言、日常任务打卡，可一键点选词库单词制作专属日程或触发复习！"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onViewPlans}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-600/15 cursor-pointer whitespace-nowrap"
+          >
+            {useTargetUi ? "Open Plans" : "去制定周计划"}
+          </button>
+        </div>
+      )}
 
       {/* 语言筛选下空词库温和提示 */}
       {selectedLanguage !== "All" && words.length === 0 && (

@@ -44,6 +44,12 @@ interface WordDbSchema {
   systemOffsetMs: number;
   users?: any[];
   sessions?: any[];
+  languageSettings?: any[];
+  // v1.9 周计划相关
+  learningPlans?: any[];
+  learningTasks?: any[];
+  learningDayMeta?: any[];
+  userTaskTypes?: any[];
 }
 
 function initLocalDb(): WordDbSchema {
@@ -58,7 +64,11 @@ function initLocalDb(): WordDbSchema {
       histories: [],
       systemOffsetMs: 0,
       users: [],
-      sessions: []
+      sessions: [],
+      learningPlans: [],
+      learningTasks: [],
+      learningDayMeta: [],
+      userTaskTypes: []
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2), "utf8");
     return initialData;
@@ -72,10 +82,18 @@ function initLocalDb(): WordDbSchema {
     if (typeof data.systemOffsetMs !== "number") data.systemOffsetMs = 0;
     if (!data.users) data.users = [];
     if (!data.sessions) data.sessions = [];
+    // v1.9 兼容老 db.json: 缺字段则补空数组
+    if (!data.learningPlans) data.learningPlans = [];
+    if (!data.learningTasks) data.learningTasks = [];
+    if (!data.learningDayMeta) data.learningDayMeta = [];
+    if (!data.userTaskTypes) data.userTaskTypes = [];
     return data;
   } catch (err) {
     console.error("[Database] Failed to parse local db file:", err);
-    return { words: [], histories: [], systemOffsetMs: 0, users: [], sessions: [] };
+    return {
+      words: [], histories: [], systemOffsetMs: 0, users: [], sessions: [],
+      learningPlans: [], learningTasks: [], learningDayMeta: [], userTaskTypes: []
+    };
   }
 }
 
@@ -903,6 +921,415 @@ async function upsertUserLanguageSettings(userId: string, language: string, dail
   } else {
     (db as any).languageSettings.push({ userId, language: cleanLang, dailyGoal, level });
   }
+  writeLocalDb(db);
+}
+
+// ============================================================
+// 周计划 DAO (v1.9) — Supabase + 本地 JSON 双路径
+// ============================================================
+
+// ---- 类型/常量 ----
+const DEFAULT_TASK_TYPES = [
+  { id: "shortTask", label: "备忘任务", icon: "CheckSquare", color: "teal", sortOrder: 0 },
+  { id: "reading", label: "日常阅读", icon: "BookOpen", color: "amber", sortOrder: 1 },
+  { id: "sports", label: "运动训练", icon: "Dumbbell", color: "rose", sortOrder: 2 },
+  { id: "language", label: "语言学习", icon: "Languages", color: "violet", sortOrder: 3 }
+];
+
+// 把 learning_plans/tasks/day_meta 三表合并为前端 LearningPlan 结构
+function assemblePlan(planRow: any, taskRows: any[], metaRows: any[]) {
+  // 把 day_of_week 分组(0=Inbox + 1-7)
+  const days = [];
+  for (let dow = 0; dow <= 7; dow++) {
+    const dayTasks = taskRows
+      .filter(t => t.day_of_week === dow || t.dayOfWeek === dow)
+      .sort((a, b) => (a.sort_order ?? a.sortOrder ?? 0) - (b.sort_order ?? b.sortOrder ?? 0))
+      .map(t => ({
+        id: t.id,
+        type: t.type,
+        title: t.title,
+        description: t.description || undefined,
+        completed: !!t.completed,
+        linkedWordIds: t.linked_word_ids || t.linkedWordIds || undefined
+      }));
+    const meta = metaRows.find(m => (m.day_of_week ?? m.dayOfWeek) === dow);
+    days.push({
+      dayOfWeek: dow,
+      isRestDay: !!(meta?.is_rest_day ?? meta?.isRestDay),
+      tasks: dayTasks,
+      completed: !!(meta?.completed)
+    });
+  }
+  return {
+    id: planRow.id,
+    title: planRow.title,
+    startDate: planRow.start_date ?? planRow.startDate,
+    endDate: planRow.end_date ?? planRow.endDate,
+    status: planRow.status,
+    days,
+    createdAt: planRow.created_at ?? planRow.createdAt,
+    updatedAt: planRow.updated_at ?? planRow.updatedAt
+  };
+}
+
+// ---- 读: 列出用户所有计划(含 tasks + dayMeta, 一次返回) ----
+async function listUserPlans(userId: string): Promise<any[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const [{ data: plans }, { data: tasks }, { data: metas }] = await Promise.all([
+        supabase.from("learning_plans").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
+        supabase.from("learning_tasks").select("*").eq("user_id", userId),
+        supabase.from("learning_day_meta").select("*").eq("user_id", userId)
+      ]);
+      if (plans) {
+        return (plans as any[]).map(p =>
+          assemblePlan(p, (tasks as any[]) || [], (metas as any[]) || [])
+        );
+      }
+    } catch (err) {
+      console.warn("[Database] Supabase listUserPlans failed, fallback to local:", err);
+    }
+  }
+
+  // 本地 JSON
+  const db = readLocalDb();
+  const plans = (db.learningPlans || []).filter(p => p.userId === userId)
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  const tasks = db.learningTasks || [];
+  const metas = db.learningDayMeta || [];
+  return plans.map(p => {
+    const pTasks = tasks.filter(t => t.planId === p.id);
+    const pMetas = metas.filter(m => m.planId === p.id);
+    return assemblePlan(p, pTasks, pMetas);
+  });
+}
+
+// ---- 写: 创建计划(含初始 8 天结构 + 可选任务) ----
+async function createPlanWithContent(userId: string, planInput: any): Promise<any> {
+  const now = new Date().toISOString();
+  const planRow = {
+    id: planInput.id,
+    user_id: userId,
+    title: planInput.title,
+    start_date: planInput.startDate,
+    end_date: planInput.endDate,
+    status: planInput.status || "active",
+    created_at: now,
+    updated_at: now
+  };
+  // 收集所有任务和日级元数据
+  const taskRows = (planInput.days || []).flatMap((d: any) =>
+    (d.tasks || []).map((t: any, idx: number) => ({
+      id: t.id,
+      plan_id: planInput.id,
+      user_id: userId,
+      day_of_week: d.dayOfWeek,
+      type: t.type,
+      title: t.title,
+      description: t.description || null,
+      completed: !!t.completed,
+      linked_word_ids: t.linkedWordIds || [],
+      sort_order: idx,
+      created_at: now
+    }))
+  );
+  const metaRows = (planInput.days || [])
+    .filter((d: any) => d.dayOfWeek >= 1 && d.dayOfWeek <= 7)
+    .map((d: any) => ({
+      plan_id: planInput.id,
+      user_id: userId,
+      day_of_week: d.dayOfWeek,
+      is_rest_day: !!d.isRestDay,
+      completed: !!d.completed
+    }));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const [planInsert, taskInsert, metaInsert] = await Promise.all([
+        supabase.from("learning_plans").insert(planRow),
+        taskRows.length > 0 ? supabase.from("learning_tasks").insert(taskRows) : Promise.resolve(),
+        metaRows.length > 0 ? supabase.from("learning_day_meta").insert(metaRows) : Promise.resolve()
+      ]);
+      if (planInsert.error) throw planInsert.error;
+      if (taskInsert && (taskInsert as any).error) throw (taskInsert as any).error;
+      if (metaInsert && (metaInsert as any).error) throw (metaInsert as any).error;
+      return assemblePlan(planRow, taskRows, metaRows);
+    } catch (err) {
+      console.warn("[Database] Supabase createPlanWithContent failed, fallback to local:", err);
+    }
+  }
+
+  // 本地 JSON
+  const db = readLocalDb();
+  db.learningPlans!.push({
+    id: planRow.id,
+    userId,
+    title: planRow.title,
+    startDate: planRow.start_date,
+    endDate: planRow.end_date,
+    status: planRow.status,
+    createdAt: now,
+    updatedAt: now
+  });
+  taskRows.forEach(t => db.learningTasks!.push({
+    id: t.id, planId: t.plan_id, userId, dayOfWeek: t.day_of_week,
+    type: t.type, title: t.title, description: t.description,
+    completed: t.completed, linkedWordIds: t.linked_word_ids,
+    sortOrder: t.sort_order, createdAt: now
+  }));
+  metaRows.forEach(m => db.learningDayMeta!.push({
+    planId: m.plan_id, userId, dayOfWeek: m.day_of_week,
+    isRestDay: m.is_rest_day, completed: m.completed
+  }));
+  writeLocalDb(db);
+  return assemblePlan(planRow, taskRows, metaRows);
+}
+
+// ---- 改: 计划元信息(title/status/日期) ----
+async function updatePlanMeta(userId: string, planId: string, updates: any): Promise<void> {
+  const now = new Date().toISOString();
+  const dbUpdates: any = { updated_at: now };
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.status !== undefined) dbUpdates.status = updates.status;
+  if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
+  if (updates.endDate !== undefined) dbUpdates.end_date = updates.endDate;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from("learning_plans")
+        .update(dbUpdates)
+        .eq("id", planId)
+        .eq("user_id", userId);
+      if (!error) return;
+      console.warn("[Database] Supabase updatePlanMeta error:", error);
+    } catch (err) {
+      console.warn("[Database] Supabase updatePlanMeta failed, fallback to local:", err);
+    }
+  }
+  const db = readLocalDb();
+  const p = (db.learningPlans || []).find(x => x.id === planId && x.userId === userId);
+  if (p) {
+    if (updates.title !== undefined) p.title = updates.title;
+    if (updates.status !== undefined) p.status = updates.status;
+    if (updates.startDate !== undefined) p.startDate = updates.startDate;
+    if (updates.endDate !== undefined) p.endDate = updates.endDate;
+    p.updatedAt = now;
+    writeLocalDb(db);
+  }
+}
+
+// ---- 删: 计划(CASCADE 删 tasks + meta) ----
+async function deletePlan(userId: string, planId: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 数据库设置了 ON DELETE CASCADE,删主表即可
+      const { error } = await supabase.from("learning_plans")
+        .delete().eq("id", planId).eq("user_id", userId);
+      if (!error) return;
+      console.warn("[Database] Supabase deletePlan error:", error);
+    } catch (err) {
+      console.warn("[Database] Supabase deletePlan failed, fallback to local:", err);
+    }
+  }
+  const db = readLocalDb();
+  db.learningPlans = (db.learningPlans || []).filter(p => !(p.id === planId && p.userId === userId));
+  db.learningTasks = (db.learningTasks || []).filter(t => !(t.planId === planId && t.userId === userId));
+  db.learningDayMeta = (db.learningDayMeta || []).filter(m => !(m.planId === planId && m.userId === userId));
+  writeLocalDb(db);
+}
+
+// ---- 写: upsert 单个任务(新增或更新) ----
+async function upsertTask(userId: string, planId: string, taskInput: any, dayOfWeek: number, sortOrder = 0): Promise<any> {
+  const now = new Date().toISOString();
+  const taskRow = {
+    id: taskInput.id,
+    plan_id: planId,
+    user_id: userId,
+    day_of_week: dayOfWeek,
+    type: taskInput.type,
+    title: taskInput.title,
+    description: taskInput.description || null,
+    completed: !!taskInput.completed,
+    linked_word_ids: taskInput.linkedWordIds || [],
+    sort_order: sortOrder,
+    created_at: now
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 先查是否已存在
+      const { data: existing } = await supabase
+        .from("learning_tasks")
+        .select("id")
+        .eq("id", taskInput.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from("learning_tasks")
+          .update({
+            day_of_week: dayOfWeek,
+            type: taskInput.type,
+            title: taskInput.title,
+            description: taskInput.description || null,
+            completed: !!taskInput.completed,
+            linked_word_ids: taskInput.linkedWordIds || [],
+            sort_order: sortOrder
+          })
+          .eq("id", taskInput.id)
+          .eq("user_id", userId)
+          .select()
+          .maybeSingle();
+        if (!error) return data;
+      } else {
+        const { data, error } = await supabase
+          .from("learning_tasks")
+          .insert(taskRow)
+          .select()
+          .maybeSingle();
+        if (!error) return data;
+      }
+    } catch (err) {
+      console.warn("[Database] Supabase upsertTask failed, fallback to local:", err);
+    }
+  }
+
+  // 本地 JSON
+  const db = readLocalDb();
+  const arr = db.learningTasks!;
+  const idx = arr.findIndex(t => t.id === taskInput.id && t.userId === userId);
+  const localRow = {
+    id: taskInput.id, planId, userId, dayOfWeek,
+    type: taskInput.type, title: taskInput.title,
+    description: taskInput.description || undefined,
+    completed: !!taskInput.completed,
+    linkedWordIds: taskInput.linkedWordIds,
+    sortOrder, createdAt: now
+  };
+  if (idx >= 0) {
+    arr[idx] = { ...arr[idx], ...localRow };
+  } else {
+    arr.push(localRow);
+  }
+  // 同步 plan 的 updatedAt
+  const p = (db.learningPlans || []).find(x => x.id === planId && x.userId === userId);
+  if (p) p.updatedAt = now;
+  writeLocalDb(db);
+  return localRow;
+}
+
+// ---- 删: 单任务 ----
+async function deleteTask(userId: string, planId: string, taskId: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from("learning_tasks")
+        .delete().eq("id", taskId).eq("user_id", userId).eq("plan_id", planId);
+      if (!error) return;
+    } catch (err) {
+      console.warn("[Database] Supabase deleteTask failed:", err);
+    }
+  }
+  const db = readLocalDb();
+  db.learningTasks = (db.learningTasks || []).filter(t => !(t.id === taskId && t.userId === userId && t.planId === planId));
+  writeLocalDb(db);
+}
+
+// ---- 改: 日级元信息 (休息日/整日打卡) ----
+async function upsertDayMeta(userId: string, planId: string, dayOfWeek: number, meta: { isRestDay?: boolean; completed?: boolean }): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from("learning_day_meta")
+        .upsert({
+          plan_id: planId,
+          user_id: userId,
+          day_of_week: dayOfWeek,
+          is_rest_day: meta.isRestDay ?? false,
+          completed: meta.completed ?? false
+        }, { onConflict: "plan_id,day_of_week" });
+      if (!error) return;
+      console.warn("[Database] Supabase upsertDayMeta error:", error);
+    } catch (err) {
+      console.warn("[Database] Supabase upsertDayMeta failed:", err);
+    }
+  }
+  const db = readLocalDb();
+  const arr = db.learningDayMeta!;
+  const idx = arr.findIndex(m => m.planId === planId && m.userId === userId && m.dayOfWeek === dayOfWeek);
+  if (idx >= 0) {
+    if (meta.isRestDay !== undefined) arr[idx].isRestDay = meta.isRestDay;
+    if (meta.completed !== undefined) arr[idx].completed = meta.completed;
+  } else {
+    arr.push({
+      planId, userId, dayOfWeek,
+      isRestDay: meta.isRestDay ?? false,
+      completed: meta.completed ?? false
+    });
+  }
+  writeLocalDb(db);
+}
+
+// ---- 读: 用户的任务类型配置 ----
+async function getUserTaskTypes(userId: string): Promise<any[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("user_task_types")
+        .select("*")
+        .eq("user_id", userId)
+        .order("sort_order", { ascending: true });
+      if (!error && data && data.length > 0) {
+        return (data as any[]).map(r => ({
+          id: r.id, label: r.label, icon: r.icon, color: r.color, sortOrder: r.sort_order
+        }));
+      }
+      // 表为空时返回默认配置,并在库里种一份
+      if (!error && (!data || data.length === 0)) {
+        await setUserTaskTypes(userId, DEFAULT_TASK_TYPES);
+        return DEFAULT_TASK_TYPES;
+      }
+    } catch (err) {
+      console.warn("[Database] Supabase getUserTaskTypes failed, fallback to local:", err);
+    }
+  }
+  const db = readLocalDb();
+  const rows = (db.userTaskTypes || []).filter(t => t.userId === userId)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  return rows.length > 0 ? rows : DEFAULT_TASK_TYPES;
+}
+
+// ---- 写: 全量替换用户任务类型配置 ----
+async function setUserTaskTypes(userId: string, types: any[]): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 先删后插(全量替换)
+      await supabase.from("user_task_types").delete().eq("user_id", userId);
+      const rows = types.map((t, idx) => ({
+        user_id: userId,
+        id: t.id,
+        label: t.label,
+        icon: t.icon,
+        color: t.color,
+        sort_order: t.sortOrder ?? idx
+      }));
+      if (rows.length > 0) {
+        const { error } = await supabase.from("user_task_types").insert(rows);
+        if (!error) return;
+        console.warn("[Database] Supabase setUserTaskTypes error:", error);
+      } else {
+        return;
+      }
+    } catch (err) {
+      console.warn("[Database] Supabase setUserTaskTypes failed:", err);
+    }
+  }
+  const db = readLocalDb();
+  db.userTaskTypes = types.map((t, idx) => ({
+    userId, id: t.id, label: t.label, icon: t.icon, color: t.color,
+    sortOrder: t.sortOrder ?? idx
+  }));
   writeLocalDb(db);
 }
 
@@ -2147,6 +2574,177 @@ app.post("/api/system/reset", authMiddleware, async (req: any, res) => {
   } catch (err: any) {
     console.error("System reset error:", err);
     res.status(500).json({ error: "重置失败: " + (err.message || err) });
+  }
+});
+
+// ============================================================
+// 周计划路由 (v1.9)
+// ============================================================
+
+// 列出当前用户所有计划
+app.get("/api/plans", authMiddleware, async (req: any, res) => {
+  try {
+    const plans = await listUserPlans(req.userId);
+    res.json(plans);
+  } catch (err: any) {
+    console.error("List plans error:", err);
+    res.status(500).json({ error: "获取学习计划失败: " + (err.message || err) });
+  }
+});
+
+// 创建新计划(支持含初始任务批量上传)
+app.post("/api/plans", authMiddleware, async (req: any, res) => {
+  try {
+    const planInput = req.body;
+    if (!planInput.id || !planInput.title || !planInput.startDate) {
+      return res.status(400).json({ error: "缺少必填字段 (id/title/startDate)" });
+    }
+    const created = await createPlanWithContent(req.userId, planInput);
+    res.status(201).json(created);
+  } catch (err: any) {
+    console.error("Create plan error:", err);
+    res.status(500).json({ error: "创建学习计划失败: " + (err.message || err) });
+  }
+});
+
+// 更新计划元信息
+app.patch("/api/plans/:id", authMiddleware, async (req: any, res) => {
+  try {
+    await updatePlanMeta(req.userId, req.params.id, req.body);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Update plan error:", err);
+    res.status(500).json({ error: "更新计划失败: " + (err.message || err) });
+  }
+});
+
+// 删除计划
+app.delete("/api/plans/:id", authMiddleware, async (req: any, res) => {
+  try {
+    await deletePlan(req.userId, req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Delete plan error:", err);
+    res.status(500).json({ error: "删除计划失败: " + (err.message || err) });
+  }
+});
+
+// 新增/更新任务
+app.post("/api/plans/:id/tasks", authMiddleware, async (req: any, res) => {
+  try {
+    const { task, dayOfWeek, sortOrder } = req.body;
+    if (!task || !task.id || !task.title || dayOfWeek === undefined) {
+      return res.status(400).json({ error: "缺少必填字段 (task.id/task.title/dayOfWeek)" });
+    }
+    const saved = await upsertTask(req.userId, req.params.id, task, dayOfWeek, sortOrder || 0);
+    res.status(201).json(saved);
+  } catch (err: any) {
+    console.error("Upsert task error:", err);
+    res.status(500).json({ error: "保存任务失败: " + (err.message || err) });
+  }
+});
+
+// 更新任务(局部字段)
+app.patch("/api/plans/:id/tasks/:taskId", authMiddleware, async (req: any, res) => {
+  try {
+    const existing = await listUserPlans(req.userId);
+    const plan = existing.find(p => p.id === req.params.id);
+    if (!plan) return res.status(404).json({ error: "计划不存在" });
+    // 找到原任务(跨天)
+    let origTask: any = null;
+    let origDay = 0;
+    let origSort = 0;
+    for (const d of plan.days) {
+      const f = d.tasks.find((t: any) => t.id === req.params.taskId);
+      if (f) { origTask = f; origDay = d.dayOfWeek; origSort = 0; break; }
+    }
+    if (!origTask) return res.status(404).json({ error: "任务不存在" });
+    const merged = { ...origTask, ...req.body };
+    const day = req.body.dayOfWeek !== undefined ? req.body.dayOfWeek : origDay;
+    const saved = await upsertTask(req.userId, req.params.id, merged, day, req.body.sortOrder ?? origSort);
+    res.json(saved);
+  } catch (err: any) {
+    console.error("Patch task error:", err);
+    res.status(500).json({ error: "更新任务失败: " + (err.message || err) });
+  }
+});
+
+// 删除任务
+app.delete("/api/plans/:id/tasks/:taskId", authMiddleware, async (req: any, res) => {
+  try {
+    await deleteTask(req.userId, req.params.id, req.params.taskId);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Delete task error:", err);
+    res.status(500).json({ error: "删除任务失败: " + (err.message || err) });
+  }
+});
+
+// 更新某天的元信息
+app.patch("/api/plans/:id/days/:day", authMiddleware, async (req: any, res) => {
+  try {
+    const day = parseInt(req.params.day, 10);
+    if (isNaN(day) || day < 1 || day > 7) {
+      return res.status(400).json({ error: "day 参数必须在 1-7 之间" });
+    }
+    await upsertDayMeta(req.userId, req.params.id, day, req.body);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Update day meta error:", err);
+    res.status(500).json({ error: "更新日级元信息失败: " + (err.message || err) });
+  }
+});
+
+// 获取用户的任务类型配置
+app.get("/api/user/task-types", authMiddleware, async (req: any, res) => {
+  try {
+    const types = await getUserTaskTypes(req.userId);
+    res.json(types);
+  } catch (err: any) {
+    console.error("Get task types error:", err);
+    res.status(500).json({ error: "获取任务类型失败: " + (err.message || err) });
+  }
+});
+
+// 全量替换用户任务类型配置
+app.put("/api/user/task-types", authMiddleware, async (req: any, res) => {
+  try {
+    if (!Array.isArray(req.body)) {
+      return res.status(400).json({ error: "请求体必须是数组" });
+    }
+    await setUserTaskTypes(req.userId, req.body);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Set task types error:", err);
+    res.status(500).json({ error: "保存任务类型失败: " + (err.message || err) });
+  }
+});
+
+// 一次性迁移: localStorage -> 数据库
+app.post("/api/plans/migrate", authMiddleware, async (req: any, res) => {
+  try {
+    const { plans, taskTypes } = req.body;
+    if (!Array.isArray(plans)) {
+      return res.status(400).json({ error: "plans 必须是数组" });
+    }
+    let migratedPlans = 0;
+    let migratedTasks = 0;
+    for (const plan of plans) {
+      // 跳过已存在的 ID(用户新设备重复迁移保护)
+      const existing = await listUserPlans(req.userId);
+      if (existing.some(p => p.id === plan.id)) continue;
+      await createPlanWithContent(req.userId, plan);
+      migratedPlans++;
+      migratedTasks += (plan.days || []).reduce((acc: number, d: any) => acc + (d.tasks?.length || 0), 0);
+    }
+    // 任务类型全量替换
+    if (Array.isArray(taskTypes) && taskTypes.length > 0) {
+      await setUserTaskTypes(req.userId, taskTypes);
+    }
+    res.json({ success: true, migratedPlans, migratedTasks });
+  } catch (err: any) {
+    console.error("Migrate plans error:", err);
+    res.status(500).json({ error: "迁移失败: " + (err.message || err) });
   }
 });
 

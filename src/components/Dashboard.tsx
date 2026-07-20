@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { 
-  ArrowRight, 
-  Calendar, 
-  Clock, 
-  Database, 
-  Flame, 
-  HelpCircle, 
-  Info, 
-  RotateCcw, 
-  Sparkles, 
-  TrendingUp, 
-  Trophy 
+import {
+  ArrowRight,
+  Calendar,
+  Clock,
+  Database,
+  Flame,
+  HelpCircle,
+  Info,
+  RotateCcw,
+  Sparkles,
+  TrendingUp,
+  Trophy,
+  BookOpen,
+  CalendarRange
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -42,6 +44,7 @@ interface DashboardProps {
   onStartReview: () => void;
   onNavigateWords?: () => void;
   onViewRules?: () => void;
+  onViewPlans?: () => void;
   selectedLanguage: string;
   useTargetUi: boolean;
   user?: { email: string } | null;
@@ -98,6 +101,7 @@ export default function Dashboard({
   onStartReview,
   onNavigateWords,
   onViewRules,
+  onViewPlans,
   selectedLanguage,
   useTargetUi,
   user,
@@ -221,35 +225,80 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ⚽ 国际足联足球规则科普讲堂 入口卡片 */}
-      <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 text-white rounded-3xl p-6 sm:p-7 relative overflow-hidden shadow-xl shadow-emerald-950/20">
-        {/* 抽象足球场线条装饰 */}
-        <div className="absolute inset-0 opacity-10 pointer-events-none">
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-white"></div>
-          <div className="absolute top-1/2 left-1/2 w-40 h-40 border-4 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-        </div>
-        <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-emerald-200 border border-white/10">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-spin-slow" />
-              <span>{t.footballEntryBadge}</span>
-            </div>
-            <h2 className="font-display font-bold text-xl sm:text-2xl tracking-tight leading-tight">
-              {t.footballEntryTitle}
-            </h2>
-            <p className="text-emerald-100/80 text-xs sm:text-sm font-light leading-relaxed">
-              {t.footballEntryDesc}
-            </p>
+      {/* 🚀 智能应用拓展中心 / Application & Tool Hub */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-500 animate-pulse" />
+            <h3 className="font-display font-bold text-slate-800 text-base">
+              {useTargetUi ? "Application Hub" : "智能应用拓展中心"}
+            </h3>
           </div>
-          <button
+          <span className="text-[11px] font-medium text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100/80">
+            {useTargetUi ? "⚡ Core Modules" : "⚡ 一键直达拓展系统"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Soccer Rules Classroom Entry Card */}
+          <div
             onClick={() => onViewRules && onViewRules()}
-            className="self-start md:self-center shrink-0 px-5 py-2.5 bg-white text-emerald-900 hover:bg-emerald-50 rounded-xl text-sm font-semibold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-2"
+            className="group relative bg-white hover:bg-emerald-50/10 p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-300 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer flex gap-4 items-center"
           >
-            {t.footballEntryCta}
-            <ArrowRight className="w-4 h-4" />
-          </button>
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+              <BookOpen className="w-6 h-6" />
+            </div>
+
+            <div className="flex-grow min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-display font-bold text-slate-800 text-sm group-hover:text-emerald-700 transition-colors">
+                  {useTargetUi ? "FIFA Football Rules Classroom" : "国际足联足球规则科普讲堂"}
+                </h4>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-semibold">
+                  {useTargetUi ? "17 Laws • Bilingual" : "17章节 • 双语"}
+                </span>
+              </div>
+              <p className="text-slate-500 text-xs truncate">
+                {useTargetUi
+                  ? "Latest FIFA Laws of the Game 2026/2027 official rules search"
+                  : "最新 FIFA Laws of the Game 2026/2027 官方权威规则检索"}
+              </p>
+            </div>
+
+            <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-emerald-500 text-slate-400 group-hover:text-white flex items-center justify-center transition-all shrink-0">
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+
+          {/* Personalized Learning Plans Entry Card */}
+          <div
+            onClick={() => onViewPlans && onViewPlans()}
+            className="group relative bg-white hover:bg-indigo-50/10 p-5 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer flex gap-4 items-center"
+          >
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+              <CalendarRange className="w-6 h-6" />
+            </div>
+
+            <div className="flex-grow min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-display font-bold text-slate-800 text-sm group-hover:text-indigo-700 transition-colors">
+                  {useTargetUi ? "Personalized Weekly Learning Plans" : "个性化日程与学习周计划"}
+                </h4>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[9px] font-semibold">
+                  {useTargetUi ? "Vocab Linked • 4 Types" : "词库打通 • 4类任务"}
+                </span>
+              </div>
+              <p className="text-slate-500 text-xs truncate">
+                {useTargetUi
+                  ? "Weekly schedule with sports, language, reading tasks and vocabulary reviews"
+                  : "周规划打卡，支持运动、语言、阅读等任务并关联生词复习"}
+              </p>
+            </div>
+
+            <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-indigo-500 text-slate-400 group-hover:text-white flex items-center justify-center transition-all shrink-0">
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
         </div>
       </div>
 
