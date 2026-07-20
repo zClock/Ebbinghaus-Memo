@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.2（2026-07-20，补充 Git Flow SOP 协作规范）
+- **当前版本**：v1.9.3（2026-07-20，批量导入支持模型选择 + 并发加速）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -22,7 +22,11 @@
 - 我可以**单个添加**新单词，AI 自动生成中文释义、音标、例句、例句翻译、助记
 - 添加重复单词时返回中文提示 `单词 "xxx" 已经存在于您的个人词库中。`
 - 我可以**批量导入**单词（每批最多 30 个，去重、过滤空值）
-- 批量导入时显示**进度条**（逐个调用 `/api/words/create`，实时显示 `N/M` + 百分比 + 当前单词）
+- 批量导入支持**两种生成模式**（v1.9.3）：
+  - **⚡ 快速模式**（默认）：Gemini Flash Lite + 并发 5，30 词约 6-9 秒
+  - **🎯 高质量模式**：GLM 5.2（实测质量最佳）+ 并发 5，30 词约 30 秒
+  - 用户选择持久化到 localStorage（`ebbinghaus_import_mode`），下次自动沿用
+- 批量导入**后端并发处理**（v1.9.3）：从串行改为并发 5，加速 5 倍；字典 API 与 AI 并行执行
 - 我可以**手动编辑**单词的释义、音标、例句、例句翻译、助记
 - 我可以**删除**单词（级联删除其复习历史）
 - 我可以**AI 重新生成**某个单词的全部字段
@@ -291,7 +295,7 @@
 | GET | `/api/words/due?language=` | 列出今日待复习 |
 | GET | `/api/histories?language=` | 列出复习历史 |
 | POST | `/api/words/create` | 新建单词（AI 增强）|
-| POST | `/api/words/import-batch` | 批量导入（上限 30 个）|
+| POST | `/api/words/import-batch` | 批量导入（上限 30 个，并发 5，body: `{spellings, language, mode?: "fast"\|"quality"}`，v1.9.3）|
 | PATCH | `/api/words/:id` | 编辑单词字段 |
 | DELETE | `/api/words/:id` | 删除单词 |
 | POST | `/api/words/:id/regenerate` | AI 重新生成（使用 `word.language`，不再默认 English）|
@@ -584,6 +588,16 @@
 ---
 
 ## 9. 版本历史
+
+**v1.9.3（2026-07-20）**：批量导入支持模型选择 + 并发加速
+- 🔴 新功能：批量导入弹窗新增「生成模式」选项（⚡ 快速 / 🎯 高质量），用户可自由切换
+- 🔴 性能：后端 `/api/words/import-batch` 从串行改为**并发 5 处理**（新增 `processWithConcurrency` 工具）
+- 🔴 性能：**字典 API 与 AI 并行执行**（`Promise.all([dictPromise, aiPromise])`），单词耗时减半
+- 🔴 新增：`generateAiWordDetails` 加 `mode` 参数，`fast` 优先 Gemini Lite、`quality` 优先 GLM 5.2
+- 🟢 UX：用户选择持久化到 localStorage（`ebbinghaus_import_mode`），下次自动沿用
+- 🟢 健壮性：`mode` 参数白名单校验，默认 `fast`
+- 📊 预估：fast 模式 30 词 ~6-9 秒（5x 加速），quality 模式 ~30 秒
+- 🔧 重构：抽取 `generateWithGlm` 函数消除 GLM 调用重复代码
 
 **v1.9.2（2026-07-20）**：补充 Git Flow SOP 协作规范
 - 📄 文档：[CLAUDE.md](file:///CLAUDE.md) §6 新增 4 个子节（6.1 SOP / 6.2 关键约束 / 6.3 新 session 自检 / 6.4 提交消息规范），把"规则"扩展为"可执行操作手册"
