@@ -125,6 +125,15 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.4（2026-07-20）：批量导入改为分组串行 + 组间等待 5 秒
+- ✅ [api/index.ts](file:///api/index.ts) `/api/words/import-batch` 从一次性 `processWithConcurrency` 改为分组串行
+  - `GROUP_SIZE = 5`：每组 5 个单词
+  - `GROUP_DELAY_MS = 5000`：组间等待 5 秒
+  - 组内仍并发 5（`Promise.all`），组间 `await sleep(5000)`
+  - 30 词共 6 组，总耗时约 = 6 × 单组耗时 + 5 × 5 秒等待
+- ✅ [src/App.tsx](file:///src/App.tsx) 前端进度提示文案改为「分组处理 · 每组 5 词组间等 5 秒」
+- ✅ 4 件套文档同步到 v1.9.4
+
 ### v1.9.3（2026-07-20）：批量导入支持模型选择 + 后端并发加速
 - ✅ [src/components/WordList.tsx](file:///src/components/WordList.tsx) 批量导入弹窗新增「生成模式」单选（⚡ 快速 / 🎯 高质量）
   - 用户选择持久化到 localStorage（`ebbinghaus_import_mode`），下次自动沿用

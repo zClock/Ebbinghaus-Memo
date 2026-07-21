@@ -2376,123 +2376,137 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
       }
     }
 
-    // === 并发处理每个单词 ===
-    // 并发数:5(平衡速度与 API 限流,Gemini Lite / GLM 都支持)
-    const concurrency = 5;
-    console.log(`[Import] ${importMode} 模式,开始并发 ${concurrency} 处理 ${pending.length} 个词`);
+    // === 分组并发处理 ===
+    // 每组 5 个单词,组内并发,组间等待 5 秒(分散 API 压力)
+    const GROUP_SIZE = 5;
+    const GROUP_DELAY_MS = 5000;
+    const totalGroups = Math.ceil(pending.length / GROUP_SIZE);
+    console.log(`[Import] ${importMode} 模式,分 ${totalGroups} 组(每组 ${GROUP_SIZE} 词,组间等 ${GROUP_DELAY_MS / 1000}s),共 ${pending.length} 个词`);
 
-    const processed = await processWithConcurrency(
-      pending,
-      concurrency,
-      async (item): Promise<any> => {
-        const cleanSpelling = item.spelling;
-        let phonetic = "";
-        let definition = "";
-        let example = "";
-        let exampleTranslation = "";
-        let mnemonic = "";
-        let audioUrl = "";
+    const processor = async (item: { spelling: string; idx: number }): Promise<any> => {
+      const cleanSpelling = item.spelling;
+      let phonetic = "";
+      let definition = "";
+      let example = "";
+      let exampleTranslation = "";
+      let mnemonic = "";
+      let audioUrl = "";
 
-        // 字典 API 查询(仅英文,与 AI 并行执行)
-        const dictPromise = (targetLanguage === "English")
-          ? (async () => {
-              try {
-                const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
-                if (dictRes.ok) {
-                  const dictData = await dictRes.json();
-                  if (Array.isArray(dictData) && dictData.length > 0) {
-                    const entry = dictData[0];
-                    const phoneticFromDict = entry.phonetic || (entry.phonetics && entry.phonetics.find((p: any) => p.text)?.text) || "";
-                    let audioFromDict = "";
-                    if (entry.phonetics) {
-                      const validAudio = entry.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
-                      if (validAudio) audioFromDict = validAudio.audio;
-                    }
-                    let definitionFromDict = "";
-                    let exampleFromDict = "";
-                    if (entry.meanings && entry.meanings.length > 0) {
-                      const meaning = entry.meanings[0];
-                      if (meaning.definitions && meaning.definitions.length > 0) {
-                        definitionFromDict = meaning.definitions[0].definition || "";
-                        exampleFromDict = meaning.definitions[0].example || "";
-                      }
-                    }
-                    return { phonetic: phoneticFromDict, audio: audioFromDict, definition: definitionFromDict, example: exampleFromDict };
+      // 字典 API 查询(仅英文,与 AI 并行执行)
+      const dictPromise = (targetLanguage === "English")
+        ? (async () => {
+            try {
+              const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
+              if (dictRes.ok) {
+                const dictData = await dictRes.json();
+                if (Array.isArray(dictData) && dictData.length > 0) {
+                  const entry = dictData[0];
+                  const phoneticFromDict = entry.phonetic || (entry.phonetics && entry.phonetics.find((p: any) => p.text)?.text) || "";
+                  let audioFromDict = "";
+                  if (entry.phonetics) {
+                    const validAudio = entry.phonetics.find((p: any) => p.audio && p.audio.trim() !== "");
+                    if (validAudio) audioFromDict = validAudio.audio;
                   }
+                  let definitionFromDict = "";
+                  let exampleFromDict = "";
+                  if (entry.meanings && entry.meanings.length > 0) {
+                    const meaning = entry.meanings[0];
+                    if (meaning.definitions && meaning.definitions.length > 0) {
+                      definitionFromDict = meaning.definitions[0].definition || "";
+                      exampleFromDict = meaning.definitions[0].example || "";
+                    }
+                  }
+                  return { phonetic: phoneticFromDict, audio: audioFromDict, definition: definitionFromDict, example: exampleFromDict };
                 }
-              } catch (err) {
-                console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
               }
-              return null;
-            })()
-          : Promise.resolve(null);
-
-        // AI 生成详情(按 mode 选模型)
-        const aiPromise = (async () => {
-          try {
-            return await generateAiWordDetails(cleanSpelling, targetLanguage, importMode);
-          } catch (aiErr) {
-            console.error(`AI enrichment failed for ${cleanSpelling}:`, aiErr);
+            } catch (err) {
+              console.warn(`Standard Dictionary API fetch failed for ${cleanSpelling}`, err);
+            }
             return null;
-          }
-        })();
+          })()
+        : Promise.resolve(null);
 
-        // 字典与 AI 并行执行
-        const [dictInfo, aiData] = await Promise.all([dictPromise, aiPromise]);
+      // AI 生成详情(按 mode 选模型)
+      const aiPromise = (async () => {
+        try {
+          return await generateAiWordDetails(cleanSpelling, targetLanguage, importMode);
+        } catch (aiErr) {
+          console.error(`AI enrichment failed for ${cleanSpelling}:`, aiErr);
+          return null;
+        }
+      })();
 
-        // 字典 API 结果作为补充(主要用它的 audioUrl,因为 AI 不会生成音频)
-        if (dictInfo) {
-          phonetic = dictInfo.phonetic || "";
-          audioUrl = dictInfo.audio || "";
-          // 字典的释义/例句作为兜底
-          definition = dictInfo.definition || "";
-          example = dictInfo.example || "";
-        }
+      // 字典与 AI 并行执行
+      const [dictInfo, aiData] = await Promise.all([dictPromise, aiPromise]);
 
-        // AI 结果覆盖字典结果(AI 质量更好)
-        if (aiData) {
-          phonetic = aiData.phonetic || phonetic;
-          definition = aiData.definition || definition;
-          example = aiData.example || example;
-          exampleTranslation = aiData.exampleTranslation;
-          mnemonic = aiData.mnemonic;
-        }
-
-        if (!definition) {
-          definition = "未找到中文释义，可手动编辑。";
-        }
-        if (!phonetic) {
-          phonetic = "/-/";
-        }
-        if (!example) {
-          example = "No illustrative example sentence found.";
-          exampleTranslation = "暂无释义翻译。";
-        }
-        if (!mnemonic) {
-          mnemonic = "联想记忆：试着将该词拆分或与已知词汇关联记忆。";
-        }
-
-        return {
-          id: "word_" + Math.random().toString(36).substring(2, 11),
-          userId: req.userId,
-          spelling: cleanSpelling,
-          phonetic,
-          definition,
-          example,
-          exampleTranslation,
-          mnemonic,
-          audioUrl: audioUrl || null,
-          createdAt: vTime.toISOString(),
-          reviewStage: 0,
-          consecutiveCorrect: 0,
-          lastResetAt: vTime.toISOString(),
-          nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          language: targetLanguage
-        };
+      // 字典 API 结果作为补充(主要用它的 audioUrl,因为 AI 不会生成音频)
+      if (dictInfo) {
+        phonetic = dictInfo.phonetic || "";
+        audioUrl = dictInfo.audio || "";
+        definition = dictInfo.definition || "";
+        example = dictInfo.example || "";
       }
-    );
 
-    const results = processed.map(p => p.result);
+      // AI 结果覆盖字典结果(AI 质量更好)
+      if (aiData) {
+        phonetic = aiData.phonetic || phonetic;
+        definition = aiData.definition || definition;
+        example = aiData.example || example;
+        exampleTranslation = aiData.exampleTranslation;
+        mnemonic = aiData.mnemonic;
+      }
+
+      if (!definition) {
+        definition = "未找到中文释义，可手动编辑。";
+      }
+      if (!phonetic) {
+        phonetic = "/-/";
+      }
+      if (!example) {
+        example = "No illustrative example sentence found.";
+        exampleTranslation = "暂无释义翻译。";
+      }
+      if (!mnemonic) {
+        mnemonic = "联想记忆：试着将该词拆分或与已知词汇关联记忆。";
+      }
+
+      return {
+        id: "word_" + Math.random().toString(36).substring(2, 11),
+        userId: req.userId,
+        spelling: cleanSpelling,
+        phonetic,
+        definition,
+        example,
+        exampleTranslation,
+        mnemonic,
+        audioUrl: audioUrl || null,
+        createdAt: vTime.toISOString(),
+        reviewStage: 0,
+        consecutiveCorrect: 0,
+        lastResetAt: vTime.toISOString(),
+        nextReviewAt: new Date(vTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        language: targetLanguage
+      };
+    };
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // 分组串行 + 组内并发
+    const results: any[] = [];
+    for (let g = 0; g < totalGroups; g++) {
+      const groupStart = g * GROUP_SIZE;
+      const groupItems = pending.slice(groupStart, groupStart + GROUP_SIZE);
+      console.log(`[Import] 第 ${g + 1}/${totalGroups} 组开始 (${groupItems.map(i => i.spelling).join(", ")})`);
+
+      const groupResults = await Promise.all(groupItems.map(item => processor(item)));
+      results.push(...groupResults);
+
+      // 非最后一组,等待 5 秒
+      if (g < totalGroups - 1) {
+        console.log(`[Import] 第 ${g + 1}/${totalGroups} 组完成,等待 ${GROUP_DELAY_MS / 1000} 秒...`);
+        await sleep(GROUP_DELAY_MS);
+      }
+    }
 
     if (results.length > 0) {
       await createWordsBatch(results);
