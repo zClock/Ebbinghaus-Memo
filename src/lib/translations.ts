@@ -312,6 +312,14 @@ export interface TranslationSet {
   nextReviewLabel: string;
   deleteConfirmMsg: string;
   deleteWordBtn: string;
+  // 批量删除（v1.9.5）
+  batchManageBtn: string;
+  batchSelectAll: string;
+  batchDeleteSelected: string;
+  batchCancelSelection: string;
+  batchDeleteConfirmMsg: string;
+  batchDeleteSuccessMsg: string;
+  batchSelectedCount: string;
   saveEditsBtn: string;
   aiRegenBtn: string;
   editDetailsBtn: string;
@@ -628,6 +636,13 @@ export const translations: Record<string, TranslationSet> = {
     nextReviewLabel: "预设下次复习时间",
     deleteConfirmMsg: "确定要彻底删除单词 \"{word}\" 吗？此操作不可逆！",
     deleteWordBtn: "确认删除词条",
+    batchManageBtn: "批量管理",
+    batchSelectAll: "全选本页",
+    batchDeleteSelected: "删除选中 ({count})",
+    batchCancelSelection: "取消选择",
+    batchDeleteConfirmMsg: "将永久删除选中的 {count} 个单词,此操作不可撤销,确定继续吗?",
+    batchDeleteSuccessMsg: "已成功删除 {count} 个单词",
+    batchSelectedCount: "已选 {count}",
     saveEditsBtn: "保存修改资料",
     aiRegenBtn: "AI 智能重新润色",
     editDetailsBtn: "手动校对属性",
@@ -732,6 +747,13 @@ export const translations: Record<string, TranslationSet> = {
     cumulativeLibraryLabel: "Total library size",
     deleteConfirmMsg: "Permanently delete the word \"{word}\"? This cannot be undone!",
     deleteWordBtn: "Confirm delete",
+    batchManageBtn: "Batch Manage",
+    batchSelectAll: "Select page",
+    batchDeleteSelected: "Delete selected ({count})",
+    batchCancelSelection: "Cancel",
+    batchDeleteConfirmMsg: "Permanently delete the {count} selected word(s)? This cannot be undone!",
+    batchDeleteSuccessMsg: "Successfully deleted {count} word(s)",
+    batchSelectedCount: "{count} selected",
     detectedCountLabel: "{count} candidate words detected",
     dragTxtLabel: "Click or drag a .txt file here to upload",
     dragTxtSublabel: "Text will be auto-cleaned and target-language words extracted",
@@ -1047,6 +1069,13 @@ export const translations: Record<string, TranslationSet> = {
     cumulativeLibraryLabel: "累計語数",
     deleteConfirmMsg: "単語 \"{word}\" を完全に削除しますか？この操作は元せん！",
     deleteWordBtn: "削除を確定",
+    batchManageBtn: "一括管理",
+    batchSelectAll: "このページを選択",
+    batchDeleteSelected: "選択を削除 ({count})",
+    batchCancelSelection: "キャンセル",
+    batchDeleteConfirmMsg: "選択した {count} 件の単語を完全に削除しますか?この操作は元せん!",
+    batchDeleteSuccessMsg: "{count} 件の単語を削除しました",
+    batchSelectedCount: "{count} 件選択",
     detectedCountLabel: "{count} 語を検出しました",
     dragTxtLabel: "クリックまたは .txt ファイルをここにドラッグ",
     dragTxtSublabel: "テキストを自動でクリーニングし対象語を抽出します",
@@ -1362,6 +1391,13 @@ export const translations: Record<string, TranslationSet> = {
     cumulativeLibraryLabel: "Tamaño total",
     deleteConfirmMsg: "¿Eliminar permanentemente la palabra \"{word}\"? ¡No se puede deshacer!",
     deleteWordBtn: "Confirmar borrado",
+    batchManageBtn: "Gestionar lote",
+    batchSelectAll: "Selec. página",
+    batchDeleteSelected: "Eliminar selec. ({count})",
+    batchCancelSelection: "Cancelar",
+    batchDeleteConfirmMsg: "¿Eliminar permanentemente las {count} palabras seleccionadas? ¡No se puede deshacer!",
+    batchDeleteSuccessMsg: "Se eliminaron {count} palabra(s)",
+    batchSelectedCount: "{count} selec.",
     detectedCountLabel: "{count} palabras candidatas detectadas",
     dragTxtLabel: "Haz clic o arrastra un archivo .txt aquí",
     dragTxtSublabel: "El texto se limpiará y extraerá las palabras del idioma objetivo",
@@ -1677,6 +1713,13 @@ export const translations: Record<string, TranslationSet> = {
     cumulativeLibraryLabel: "Taille totale",
     deleteConfirmMsg: "Supprimer définitivement le mot « {word} » ? Irréversible !",
     deleteWordBtn: "Confirmer la suppression",
+    batchManageBtn: "Gérer par lot",
+    batchSelectAll: "Sélec. page",
+    batchDeleteSelected: "Supprimer sélec. ({count})",
+    batchCancelSelection: "Annuler",
+    batchDeleteConfirmMsg: "Supprimer définitivement les {count} mot(s) sélectionné(s) ? Irréversible !",
+    batchDeleteSuccessMsg: "{count} mot(s) supprimé(s)",
+    batchSelectedCount: "{count} sélec.",
     detectedCountLabel: "{count} mots candidats détectés",
     dragTxtLabel: "Cliquez ou glissez un fichier .txt ici",
     dragTxtSublabel: "Le texte sera nettoyé et les mots cibles extraits",
@@ -1992,6 +2035,13 @@ export const translations: Record<string, TranslationSet> = {
     cumulativeLibraryLabel: "Tamanho total",
     deleteConfirmMsg: "Excluir permanentemente a palavra \"{word}\"? Irreversível!",
     deleteWordBtn: "Confirmar exclusão",
+    batchManageBtn: "Gerenciar lote",
+    batchSelectAll: "Sel. página",
+    batchDeleteSelected: "Excluir selec. ({count})",
+    batchCancelSelection: "Cancelar",
+    batchDeleteConfirmMsg: "Excluir permanentemente as {count} palavras selecionadas? Irreversível!",
+    batchDeleteSuccessMsg: "{count} palavra(s) excluída(s)",
+    batchSelectedCount: "{count} sel.",
     detectedCountLabel: "{count} palavras candidatas detectadas",
     dragTxtLabel: "Clique ou arraste um arquivo .txt aqui",
     dragTxtSublabel: "O texto será limpo e as palavras-alvo extraídas",

@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.4（2026-07-20，批量导入改为分组串行 + 组间等待 5 秒）
+- **当前版本**：v1.9.5（2026-07-23，词库批量删除：全选/多选 + 级联清理 history 与周计划关联词）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -33,6 +33,7 @@
 - 我可以**AI 重新生成**某个单词的全部字段
 - 我可以**按语言过滤**词库（English / Japanese / Spanish / French / Portuguese）
 - 分页底部正确显示「第 N / M 页 (共 X 个)」
+- 我可以**批量删除**单词（v1.9.5）：进入「批量管理」选择模式后，可勾选单个 / 多个 / 全选当前页，二次确认后一次性删除；后端级联清理复习历史（histories）与周计划任务对该词的关联引用（learning_tasks.linked_word_ids）
 
 ### 1.2.1 语言筛选下空词库提示（v1.8.2）
 - 当 `selectedLanguage !== "All"` 且当前语言下没有词时，WordList 顶部显示琥珀色提示条
@@ -297,6 +298,7 @@
 | GET | `/api/histories?language=` | 列出复习历史 |
 | POST | `/api/words/create` | 新建单词（AI 增强）|
 | POST | `/api/words/import-batch` | 批量导入（上限 30 个，分 6 组每组 5 个并发，组间等 5 秒；body: `{spellings, language, mode?: "fast"\|"quality"}`，v1.9.4）|
+| POST | `/api/words/batch-delete` | 批量删除（v1.9.5）；body: `{ids: string[]}`（上限 200）；返回 `{success, deletedCount, affectedTaskIds[]}`；级联删 histories（Supabase 靠 FK CASCADE / 本地手动 filter）并清理 `learning_tasks.linked_word_ids` 悬空引用 |
 | PATCH | `/api/words/:id` | 编辑单词字段 |
 | DELETE | `/api/words/:id` | 删除单词 |
 | POST | `/api/words/:id/regenerate` | AI 重新生成（使用 `word.language`，不再默认 English）|
@@ -589,6 +591,14 @@
 ---
 
 ## 9. 版本历史
+
+**v1.9.5（2026-07-23）**：词库批量删除
+- 🔴 新功能：词库页新增「批量管理」选择模式。进入后每行出现 checkbox，支持勾选单个 / 多个 / 全选当前页，操作条显示「已选 N + 删除选中 + 取消」，浏览器 confirm 二次确认后批量删除
+- 🔴 API：新增 `POST /api/words/batch-delete`（body `{ids}`，上限 200，返回 `deletedCount` + `affectedTaskIds`）；级联删 histories（Supabase 靠 word_id ON DELETE CASCADE、本地手动 filter）
+- 🔴 数据完整性：删除时主动清理 `learning_tasks.linked_word_ids` 数组中已删词的悬空引用（数组非 FK，不会自动 CASCADE）
+- 🟢 UX：翻页 / 改筛选 / 改搜索自动清空选择；选择模式禁用「点行打开详情」避免误触；选中行高亮；单次上限 200 防滥用
+- 🟢 i18n：7 个新 key（batchManageBtn / batchSelectAll / batchDeleteSelected / batchCancelSelection / batchDeleteConfirmMsg / batchDeleteSuccessMsg / batchSelectedCount）× 6 种 UI 语言
+- ✅ 测试：E2E 新增 2 个用例（UI 全选删除流程 + API 级联清理 history & 关联词验证），word-library.spec 共 6 个全绿
 
 **v1.9.4（2026-07-20）**：批量导入改为分组串行 + 组间等待 5 秒
 - 🔴 性能策略调整：`/api/words/import-batch` 从"一次性并发全部"改为"分组串行"

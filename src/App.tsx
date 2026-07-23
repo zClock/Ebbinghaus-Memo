@@ -465,6 +465,42 @@ export default function App() {
     }
   };
 
+  // 3.2 Batch Delete Words（v1.9.5）— 批量删除，后端会级联清理 history 与周计划关联词
+  // 返回 { deletedCount } 供前端提示；失败抛错让 WordList 捕获展示
+  const handleBatchDeleteWords = async (ids: string[]): Promise<{ deletedCount: number }> => {
+    if (!ids || ids.length === 0) return { deletedCount: 0 };
+    setIsActionLoading(true);
+    try {
+      const res = await fetch("/api/words/batch-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "批量删除失败");
+      }
+      const data = await res.json();
+      // 刷词库(含 allWords 快照) + 统计 + 待复习;
+      // 后端清理了 learning_tasks.linked_word_ids，plans 缓存已过期，一并刷新
+      await Promise.all([
+        fetchStats(token, selectedLanguage),
+        fetchWords(token, selectedLanguage),
+        fetchDueWords(token, selectedLanguage),
+        fetchPlansAndTypes(token),
+      ]);
+      return { deletedCount: data?.deletedCount ?? ids.length };
+    } catch (err) {
+      console.error("Failed to batch delete words:", err);
+      throw err;
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   // 3. Update word
   const handleUpdateWord = async (id: string, updatedFields: Partial<Word>) => {
     try {
@@ -821,6 +857,7 @@ export default function App() {
                 words={words}
                 onAddWord={handleAddWord}
                 onDeleteWord={handleDeleteWord}
+                onBatchDeleteWords={handleBatchDeleteWords}
                 onUpdateWord={handleUpdateWord}
                 onRegenerateWord={handleRegenerateWord}
                 onImportWords={handleImportWords}
