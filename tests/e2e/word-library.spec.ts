@@ -1,4 +1,8 @@
+import fs from "fs";
+import path from "path";
 import { test, expect } from "./fixtures";
+
+const BASE_URL = "http://localhost:3100";
 
 test.describe("词库管理", () => {
   const PASSWORD = "Test1234!";
@@ -101,5 +105,118 @@ test.describe("词库管理", () => {
     await masteredTab.waitFor({ state: "visible", timeout: 8_000 });
     await masteredTab.click();
     await page.waitForTimeout(500);
+  });
+
+  // ===== 批量删除（v1.9.5）=====
+  test("批量删除:全选当前页并删除多个单词", async ({ page, apiHelpers }) => {
+    const email = apiHelpers.uniqueEmail("batch_del");
+    const { token } = await apiHelpers.register(email, PASSWORD);
+    await apiHelpers.addWord(token, { spelling: "batch_word_one", definition: "词一" });
+    await apiHelpers.addWord(token, { spelling: "batch_word_two", definition: "词二" });
+    await apiHelpers.addWord(token, { spelling: "batch_word_three", definition: "词三" });
+
+    // UI 登录 + 进入词库
+    await page.goto("/");
+    await page.locator('input[type="email"]').first().waitFor({ state: "visible" });
+    await page.locator('input[type="email"]').first().fill(email);
+    await page.locator('input[type="password"]').first().fill(PASSWORD);
+    await page.getByRole("button", { name: /登录智能词库/ }).click();
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /词库|Library/i }).first().click();
+
+    // 等待词库数据加载完成
+    await expect(page.getByText("batch_word_one").first()).toBeVisible({ timeout: 10_000 });
+
+    // 自动接受删除确认对话框（confirm）
+    page.on("dialog", (d) => d.accept());
+
+    // 进入批量管理模式
+    await page.getByRole("button", { name: /批量管理|Batch Manage/ }).click();
+
+    // 全选当前页
+    await page.locator("label", { hasText: /^全选本页|^Select page/ }).first().click();
+
+    // 点击「删除选中」
+    await page.getByRole("button", { name: /删除选中|Delete selected/ }).first().click();
+    await page.waitForLoadState("networkidle");
+
+    // 验证:三个词都已从数据库删除
+    const res = await fetch(`${BASE_URL}/api/words?language=All`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    const spellings = (json.words || json).map((w: any) => w.spelling);
+    expect(spellings).not.toContain("batch_word_one");
+    expect(spellings).not.toContain("batch_word_two");
+    expect(spellings).not.toContain("batch_word_three");
+  });
+
+  test("批量删除:级联清理复习历史与周计划关联词", async ({ apiHelpers }) => {
+    const email = apiHelpers.uniqueEmail("batch_cascade");
+    const { token } = await apiHelpers.register(email, PASSWORD);
+    const w1 = await apiHelpers.addWord(token, { spelling: "cascade_one", definition: "级联一" });
+    const w2 = await apiHelpers.addWord(token, { spelling: "cascade_two", definition: "级联二" });
+
+    // 取 userId
+    const meRes = await fetch(`${BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const me = await meRes.json();
+    const userId = me.user?.id || me.id;
+
+    // 直接写一条 history 关联 w1,并建一个关联 w1+w2 的周计划任务
+    const dbPath = path.resolve(process.cwd(), "data", "db.test.json");
+    const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+    db.histories = db.histories || [];
+    db.histories.push({
+      id: "h_test_cascade",
+      userId,
+      wordId: w1.id,
+      wordSpelling: "cascade_one",
+      stage: 0,
+      reviewedAt: new Date().toISOString(),
+      isCorrect: true,
+    });
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), "utf8");
+
+    const planId = "plan-test-cascade";
+    const taskId = "task-test-cascade";
+    const planRes = await fetch(`${BASE_URL}/api/plans`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        id: planId,
+        title: "测试计划",
+        startDate: "2026-07-20",
+        endDate: "2026-07-26",
+        status: "active",
+        days: [
+          {
+            dayOfWeek: 1,
+            tasks: [{ id: taskId, type: "language", title: "复习", linkedWordIds: [w1.id, w2.id] }],
+          },
+        ],
+      }),
+    });
+    expect(planRes.ok).toBe(true);
+
+    // 批量删除 w1 + w2
+    const res = await fetch(`${BASE_URL}/api/words/batch-delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ids: [w1.id, w2.id] }),
+    });
+    expect(res.ok).toBe(true);
+    const data = await res.json();
+    expect(data.deletedCount).toBe(2);
+    expect(data.affectedTaskIds).toContain(taskId);
+
+    // 验证:history 级联清理 + linkedWordIds 清理(直接读测试库文件)
+    const db2 = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+    expect((db2.histories || []).some((h: any) => h.wordId === w1.id)).toBe(false);
+    const task = (db2.learningTasks || []).find((t: any) => t.id === taskId);
+    expect(task).toBeTruthy();
+    expect(task.linkedWordIds).not.toContain(w1.id);
+    expect(task.linkedWordIds).not.toContain(w2.id);
   });
 });

@@ -18,7 +18,8 @@ import {
   FileText,
   AlertCircle,
   BarChart3,
-  Calendar
+  Calendar,
+  ListChecks
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { getTranslation } from "../lib/translations";
@@ -44,6 +45,7 @@ interface WordListProps {
   words: Word[];
   onAddWord: (spelling: string) => Promise<boolean>;
   onDeleteWord: (id: string) => void;
+  onBatchDeleteWords: (ids: string[]) => Promise<{ deletedCount: number }>;
   onUpdateWord: (id: string, updatedFields: Partial<Word>) => void;
   onRegenerateWord: (id: string) => Promise<Word>;
   onImportWords?: (
@@ -64,6 +66,7 @@ export default function WordList({
   words,
   onAddWord,
   onDeleteWord,
+  onBatchDeleteWords,
   onUpdateWord,
   onRegenerateWord,
   onImportWords,
@@ -112,11 +115,71 @@ export default function WordList({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15); // Items per page
 
-  // Reset pagination to first page when filters/sorting change
+  // 批量删除：选择模式状态（v1.9.5）
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+  const [batchMsg, setBatchMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Reset pagination to first page when filters/sorting change（同时清空批量选择）
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
   }, [searchQuery, filterMode, stageFilter, sortBy, pageSize]);
-  
+
+  // 翻页时清空批量选择
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [currentPage]);
+
+  // 进入 / 退出选择模式
+  const enterSelectionMode = () => {
+    setSelectionMode(true);
+    setSelectedIds(new Set());
+    setBatchMsg(null);
+  };
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBatchMsg(null);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // 批量删除：二次确认后调 onBatchDeleteWords，成功退出选择模式并提示
+  const handleBatchDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const confirmMsg = t.batchDeleteConfirmMsg.replace("{count}", String(ids.length));
+    if (!confirm(confirmMsg)) return;
+    setIsBatchDeleting(true);
+    setBatchMsg(null);
+    try {
+      const { deletedCount } = await onBatchDeleteWords(ids);
+      setBatchMsg({
+        type: "success",
+        text: t.batchDeleteSuccessMsg.replace("{count}", String(deletedCount)),
+      });
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+      setTimeout(() => setBatchMsg(null), 4000);
+    } catch (err: any) {
+      setBatchMsg({
+        type: "error",
+        text: err?.message || (useTargetUi ? "Batch delete failed." : "批量删除失败。"),
+      });
+    } finally {
+      setIsBatchDeleting(false);
+    }
+  };
+
   // Detail Modal & Edit state
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -360,6 +423,22 @@ export default function WordList({
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const activePage = Math.min(currentPage, totalPages);
   const paginatedWords = sortedWords.slice((activePage - 1) * pageSize, activePage * pageSize);
+
+  // 当前页全选派生值（v1.9.5，全选范围 = 当前页）
+  const pageWordIds = paginatedWords.map(w => w.id);
+  const allPageSelected = pageWordIds.length > 0 && pageWordIds.every(id => selectedIds.has(id));
+  const somePageSelected = pageWordIds.some(id => selectedIds.has(id));
+  const toggleSelectPage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        pageWordIds.forEach(id => next.delete(id));
+      } else {
+        pageWordIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
 
   const getStageColor = (stage: number) => {
     if (stage >= 5) return "bg-emerald-50 text-emerald-700 border-emerald-100";
@@ -1113,6 +1192,70 @@ export default function WordList({
             )}
           </div>
 
+          {/* 批量管理操作条（v1.9.5） */}
+          <div className={`flex flex-wrap items-center gap-3 mb-4 p-3 rounded-2xl border transition-colors ${
+            selectionMode ? "bg-indigo-50/40 border-indigo-200" : "bg-slate-50/50 border-slate-100"
+          }`}>
+            {!selectionMode ? (
+              <button
+                onClick={enterSelectionMode}
+                disabled={filteredWords.length === 0}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-600 hover:bg-white rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <ListChecks className="w-4 h-4" />
+                {t.batchManageBtn}
+              </button>
+            ) : (
+              <>
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    ref={(el: HTMLInputElement | null) => { if (el) el.indeterminate = !allPageSelected && somePageSelected; }}
+                    onChange={toggleSelectPage}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  {t.batchSelectAll}
+                </label>
+                <span className="text-[11px] text-slate-500 font-mono whitespace-nowrap">
+                  {t.batchSelectedCount.replace("{count}", String(selectedIds.size))}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={handleBatchDelete}
+                    disabled={selectedIds.size === 0 || isBatchDeleting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {t.batchDeleteSelected.replace("{count}", String(selectedIds.size))}
+                  </button>
+                  <button
+                    onClick={exitSelectionMode}
+                    disabled={isBatchDeleting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-white text-xs font-semibold rounded-xl transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    {t.batchCancelSelection}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 批量删除反馈 */}
+          {batchMsg && (
+            <div className={`mb-4 p-3 rounded-xl text-xs leading-relaxed flex items-start gap-2 ${
+              batchMsg.type === "success"
+                ? "bg-emerald-50 border border-emerald-100 text-emerald-700"
+                : "bg-rose-50 border border-rose-100 text-rose-600"
+            }`}>
+              {batchMsg.type === "success"
+                ? <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />}
+              <span>{batchMsg.text}</span>
+            </div>
+          )}
+
           {/* Table / Cards List */}
           <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-1">
             {filteredWords.length > 0 ? (
@@ -1123,10 +1266,27 @@ export default function WordList({
                 return (
                   <div
                     key={word.id}
-                    onClick={() => handleOpenDetails(word)}
-                    className="flex justify-between items-center p-4 bg-white hover:bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 shadow-sm hover:shadow transition-all cursor-pointer group"
+                    onClick={selectionMode ? () => toggleSelect(word.id) : () => handleOpenDetails(word)}
+                    className={`flex justify-between items-center p-4 rounded-2xl border shadow-sm transition-all cursor-pointer group ${
+                      selectionMode
+                        ? selectedIds.has(word.id)
+                          ? "bg-indigo-50/60 border-indigo-200 hover:border-indigo-300"
+                          : "bg-white border-slate-100 hover:border-slate-200"
+                        : "bg-white hover:bg-slate-50 border-slate-100 hover:border-slate-200 hover:shadow"
+                    }`}
                   >
-                    <div className="space-y-1">
+                    <div className={`flex items-center min-w-0 ${selectionMode ? "gap-3" : ""}`}>
+                      {selectionMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(word.id)}
+                          onChange={() => toggleSelect(word.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                          aria-label={word.spelling}
+                        />
+                      )}
+                      <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
                           {word.spelling}
@@ -1151,6 +1311,7 @@ export default function WordList({
                       <p className="text-xs text-slate-500 line-clamp-1 max-w-sm sm:max-w-md">
                         {word.definition}
                       </p>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">

@@ -125,6 +125,17 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.5（2026-07-23）：词库批量删除
+- ✅ [api/index.ts](file:///api/index.ts) 新增 `deleteWords(userId, wordIds[])` DAO + `POST /api/words/batch-delete` 端点（body `{ids}`，上限 200）
+  - histories：Supabase 靠 `word_id ON DELETE CASCADE` 自动清；本地 JSON 手动 filter
+  - 主动清理 `learning_tasks.linked_word_ids` 悬空引用（数组非 FK）：查受影响 task → JS 过滤数组 → 逐个 update / 本地一次 read-modify-write
+  - 返回 `{ deletedCount, affectedTaskIds }`
+- ✅ [src/components/WordList.tsx](file:///src/components/WordList.tsx) 新增「批量管理」选择模式：开关进入、每行 checkbox、全选当前页（indeterminate 半选态）、已选计数、删除选中（confirm 二次确认）、取消；翻页 / 筛选 / 搜索自动清空选择；选择模式禁用点行打开详情
+- ✅ [src/App.tsx](file:///src/App.tsx) 新增 `handleBatchDeleteWords`，删除后并行刷新 stats / words / dueWords / allWords / plans
+- ✅ [src/lib/translations.ts](file:///src/lib/translations.ts) 新增 7 个 batch* key × 6 种 UI 语言 + TranslationSet 接口字段
+- ✅ [tests/e2e/word-library.spec.ts](file:///tests/e2e/word-library.spec.ts) 新增 2 个用例（UI 全选删除 + API 级联清理验证），6/6 全绿
+- ✅ tsc 0 新增错误（剩余 ReviewSession QueueWord 为历史遗留）
+
 ### v1.9.4（2026-07-20）：批量导入改为分组串行 + 组间等待 5 秒
 - ✅ [api/index.ts](file:///api/index.ts) `/api/words/import-batch` 从一次性 `processWithConcurrency` 改为分组串行
   - `GROUP_SIZE = 5`：每组 5 个单词
@@ -258,6 +269,7 @@
 
 ## 版本历史
 
+- **v1.8（2026-07-23）**：归档 v1.9.5 词库批量删除功能（批量管理选择模式 + batch-delete API + 级联清理 history & 关联词 + 7×6 i18n + 2 个 E2E 用例）
 - **v1.7（2026-07-19）**：基于 v1.8.2 完成，归档 WordList 语言筛选下空词库温和提示条 + README 重写 + 四份文档同步
 - **v1.6（2026-07-18）**：基于 v1.8.1 完成，归档 FootballRules 移动端响应式修复 + 滚动复位 + 结构化渲染等 5 项任务
 - **v1.5（2026-07-18）**：基于 v1.8 完成，归档辨义选择复习模式、本地词典干扰词算法、发音防抖等 8 项任务

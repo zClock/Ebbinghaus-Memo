@@ -623,6 +623,75 @@ async function deleteWord(userId: string, wordId: string): Promise<void> {
   writeLocalDb(db);
 }
 
+// 批量删除单词（v1.9.5）
+// - histories：Supabase 靠 word_id ON DELETE CASCADE 自动清；本地 JSON 手动 filter
+// - learning_tasks.linked_word_ids 是普通数组（非 FK，不会 CASCADE），需主动清理悬空引用
+// 返回受影响的 task id 列表，前端据此决定是否需要刷新周计划视图
+async function deleteWords(
+  userId: string,
+  wordIds: string[]
+): Promise<{ deletedCount: number; affectedTaskIds: string[] }> {
+  // 去重 + 去空 + 限上限（防滥用）
+  const ids = Array.from(new Set((wordIds || []).filter((id) => typeof id === "string" && id.length > 0)));
+  if (ids.length === 0) return { deletedCount: 0, affectedTaskIds: [] };
+  if (ids.length > 200) throw new Error("单次最多删除 200 个单词");
+  const idSet = new Set(ids);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 1) 删词（histories 靠 FK CASCADE 自动级联删）
+      const { data: deleted, error: wErr } = await supabase
+        .from("words")
+        .delete()
+        .in("id", ids)
+        .eq("user_id", userId)
+        .select("id");
+      if (wErr) throw wErr;
+      const deletedCount = (deleted as any[])?.length ?? 0;
+
+      // 2) 清理 learning_tasks.linked_word_ids 中的悬空引用
+      const { data: tasks } = await supabase
+        .from("learning_tasks")
+        .select("id, linked_word_ids")
+        .eq("user_id", userId);
+      const affectedTaskIds: string[] = [];
+      for (const t of (tasks as any[]) || []) {
+        const arr: string[] = t.linked_word_ids || [];
+        if (arr.some((wid: string) => idSet.has(wid))) {
+          const cleaned = arr.filter((wid: string) => !idSet.has(wid));
+          await supabase
+            .from("learning_tasks")
+            .update({ linked_word_ids: cleaned })
+            .eq("id", t.id)
+            .eq("user_id", userId);
+          affectedTaskIds.push(t.id);
+        }
+      }
+      return { deletedCount, affectedTaskIds };
+    } catch (err) {
+      console.error("[Database] Error batch-deleting words in Supabase:", err);
+      throw err;
+    }
+  }
+
+  // 本地 JSON：一次 read-modify-write（规避并发覆盖）
+  const db = readLocalDb();
+  const before = (db.words || []).length;
+  db.words = (db.words || []).filter((w: any) => !(idSet.has(w.id) && w.userId === userId));
+  db.histories = (db.histories || []).filter((h: any) => !(idSet.has(h.wordId) && h.userId === userId));
+  const deletedCount = before - (db.words || []).length;
+
+  const affectedTaskIds: string[] = [];
+  for (const t of db.learningTasks || []) {
+    if (Array.isArray(t.linkedWordIds) && t.linkedWordIds.some((wid: string) => idSet.has(wid))) {
+      t.linkedWordIds = t.linkedWordIds.filter((wid: string) => !idSet.has(wid));
+      affectedTaskIds.push(t.id);
+    }
+  }
+  writeLocalDb(db);
+  return { deletedCount, affectedTaskIds };
+}
+
 async function updateWord(userId: string, wordId: string, updates: any): Promise<any> {
   if (isSupabaseConfigured && supabase) {
     try {
@@ -2550,6 +2619,29 @@ app.delete("/api/words/:id", authMiddleware, async (req: any, res) => {
   } catch (err: any) {
     console.error("Delete word error:", err);
     res.status(500).json({ error: "删除单词失败: " + (err.message || err) });
+  }
+});
+
+// 批量删除单词（v1.9.5）
+// body: { ids: string[] }，级联清理 history 与 learning_tasks.linked_word_ids 悬空引用
+// 返回 { success, deletedCount, affectedTaskIds }
+app.post("/api/words/batch-delete", authMiddleware, async (req: any, res) => {
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "待删除的单词 id 列表不能为空" });
+    return;
+  }
+  try {
+    const result = await deleteWords(req.userId, ids);
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      affectedTaskIds: result.affectedTaskIds,
+      message: `已成功删除 ${result.deletedCount} 个单词`,
+    });
+  } catch (err: any) {
+    console.error("Batch delete words error:", err);
+    res.status(500).json({ error: "批量删除单词失败: " + (err.message || err) });
   }
 });
 
