@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.5（2026-07-23，词库批量删除：全选/多选 + 级联清理 history 与周计划关联词）
+- **当前版本**：v1.9.6（2026-07-24，首屏加速：路由 code splitting + 词典惰性加载，gzip 344→113KB）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -591,6 +591,13 @@
 ---
 
 ## 9. 版本历史
+
+**v1.9.6（2026-07-24）**：首屏加载性能优化
+- 🔴 性能：路由级 code splitting。[App.tsx](file:///src/App.tsx) 将 Dashboard / WordList / ReviewSession / Profile / FootballRules / LearningPlans 改为 `React.lazy` + `Suspense`，首屏(登录页)只加载 Auth / Navbar，其他视图按需加载
+- 🔴 性能：[vite.config.ts](file:///vite.config.ts) 加 `manualChunks`，把 react / recharts / motion 拆成独立 vendor chunk（长期缓存命中 + 各视图 chunk 更小）
+- 🔴 性能：[api/index.ts](file:///api/index.ts) 把 5.5MB `dictionary.json` + 869KB 日语词典从「启动时同步加载」改为「首次用到辨义选择时惰性加载」，Vercel serverless 冷启动不再吞大文件
+- 📊 效果：首屏 JS gzip **344KB → 113KB（-67%）**，首次加载提速约 3 倍；recharts 等大依赖推迟到进入对应视图才下载
+- ✅ 测试：lint 0 新错误 / unit 19✓ / E2E 19✓（全绿，无回归）
 
 **v1.9.5（2026-07-23）**：词库批量删除
 - 🔴 新功能：词库页新增「批量管理」选择模式。进入后每行出现 checkbox，支持勾选单个 / 多个 / 全选当前页，操作条显示「已选 N + 删除选中 + 取消」，浏览器 confirm 二次确认后批量删除
