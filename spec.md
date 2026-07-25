@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.7（2026-07-24，首屏 API 响应加速：bootstrap 合并 + DB 索引 + 字体优化）
+- **当前版本**：v1.9.8（2026-07-24，bootstrap 内部查询全并行）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -591,6 +591,10 @@
 ---
 
 ## 9. 版本历史
+
+**v1.9.8（2026-07-24）**：bootstrap 内部查询全并行
+- 🔴 性能：`/api/system/bootstrap` 内部 5 次 Supabase 查询（system_offset / words / histories / plans / taskTypes）改为 `Promise.all` 全并行。原本 `vTime`/`offset`/`words`/`histories` 串行 4 次 RTT，且 `getVirtualTime` 内部重复查了一次 `system_offset_ms`。`vTime` 改为本地用 offset 计算，省掉重复查询 + 串行往返
+- ✅ 测试：E2E 19✓ 全绿
 
 **v1.9.7（2026-07-24）**：首屏 API 响应加速（解决"正在加载系统时序数据..."久）
 - 🔴 性能：新增 `GET /api/system/bootstrap`，一次返回 stats + words + allWords + dueWords + histories + plans + taskTypes；后端只查一次 words + 一次 histories（原本 5 个并发请求各自重复全量拉取 words 3-4 次 / histories 2 次）。前端 `loadAllData` 改为单次请求分发到各 state（5→1）

@@ -125,6 +125,10 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.8（2026-07-24）：bootstrap 内部查询全并行
+- ✅ [api/index.ts](file:///api/index.ts) `/api/system/bootstrap` 内部 5 次查询（system_offset/words/histories/plans/taskTypes）改为 `Promise.all` 全并行；`vTime` 本地算（去掉 `getVirtualTime` 重复查 `system_offset_ms`）
+- ✅ E2E 19/19 全绿
+
 ### v1.9.7（2026-07-24）：首屏 API 响应加速
 - ✅ [api/index.ts](file:///api/index.ts) 新增 `GET /api/system/bootstrap`（一次返回 stats+words+allWords+dueWords+histories+plans+taskTypes），抽 `computeStats` 纯函数
 - ✅ [src/App.tsx](file:///src/App.tsx) `loadAllData` 改为单次 bootstrap 请求（5→1）

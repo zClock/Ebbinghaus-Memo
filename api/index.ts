@@ -2205,12 +2205,16 @@ app.get("/api/system/bootstrap", authMiddleware, async (req: any, res) => {
   try {
     const userId = req.userId;
     const targetLang = req.query.language as string || "All";
-    const vTime = await getVirtualTime();
-    const systemOffsetMs = await getSystemOffsetMs();
-
-    // 查一次全量 words + histories（供 stats / 列表 / due / allWords 快照复用，不再重复拉取）
-    const allWords = await getUserWords(userId);
-    const allHistories = await getUserHistories(userId);
+    // v1.9.8：全部数据并行拉取（原本 vTime/offset/words/histories 串行 4 次 RTT，
+    // 且 getVirtualTime 内部还重复查了一次 system_offset_ms）。合并为单批并行，vTime 本地算
+    const [systemOffsetMs, allWords, allHistories, plans, taskTypes] = await Promise.all([
+      getSystemOffsetMs(),
+      getUserWords(userId),
+      getUserHistories(userId),
+      listUserPlans(userId),
+      getUserTaskTypes(userId),
+    ]);
+    const vTime = new Date(Date.now() + systemOffsetMs);
 
     const langWords = targetLang === "All"
       ? allWords
@@ -2224,11 +2228,6 @@ app.get("/api/system/bootstrap", authMiddleware, async (req: any, res) => {
 
     const stats = computeStats(langWords, langHistories, vTime, systemOffsetMs);
     const dueWords = langWords.filter(w => new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6);
-
-    const [plans, taskTypes] = await Promise.all([
-      listUserPlans(userId),
-      getUserTaskTypes(userId),
-    ]);
 
     res.json({
       stats,
