@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS histories (
   is_correct BOOLEAN NOT NULL
 );
 
+-- 4.1 性能索引（v1.9.7）：words / histories 按 user_id 查询是最高频路径，
+--     缺索引时 .eq("user_id", X) 会全表扫描，首屏随数据增长越来越慢
+CREATE INDEX IF NOT EXISTS idx_words_user ON words(user_id);
+CREATE INDEX IF NOT EXISTS idx_histories_user ON histories(user_id);
+
 -- 5. Create user_language_settings table for multi-language settings per user
 CREATE TABLE IF NOT EXISTS user_language_settings (
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,

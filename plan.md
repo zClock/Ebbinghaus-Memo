@@ -125,6 +125,14 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.7（2026-07-24）：首屏 API 响应加速
+- ✅ [api/index.ts](file:///api/index.ts) 新增 `GET /api/system/bootstrap`（一次返回 stats+words+allWords+dueWords+histories+plans+taskTypes），抽 `computeStats` 纯函数
+- ✅ [src/App.tsx](file:///src/App.tsx) `loadAllData` 改为单次 bootstrap 请求（5→1）
+- ✅ [supabase-schema.sql](file:///supabase-schema.sql) `words` / `histories` 加 `user_id` 索引
+- ✅ [src/index.css](file:///src/index.css) + [index.html](file:///index.html) 字体从 `@import` 改 `preconnect` + `link`
+- ⚠️ 线上 Supabase 需手动执行 2 条 `CREATE INDEX`
+- ✅ E2E 19/19 全绿
+
 ### v1.9.6（2026-07-24）：首屏加载性能优化
 - ✅ [src/App.tsx](file:///src/App.tsx) Dashboard / WordList / ReviewSession / Profile / FootballRules / LearningPlans 改为 `React.lazy` + `Suspense`，首屏只加载 Auth / Navbar
 - ✅ [vite.config.ts](file:///vite.config.ts) 加 `manualChunks`：react / recharts / motion 拆独立 vendor chunk
