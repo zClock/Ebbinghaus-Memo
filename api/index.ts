@@ -1445,7 +1445,7 @@ if (isGlmConfigured) {
 
 // ==========================================
 // 本地英汉词典（用于「辨义选择」复习模式的干扰词生成）
-// 启动时一次性加载 data/dictionary.json 到内存
+// 惰性加载 data/dictionary.json：首次用到辨义选择时才加载（避免 serverless 冷启动吞 5.5MB）
 // ==========================================
 interface DictEntry { w: string; d: string; }
 let dictionary: DictEntry[] = [];
@@ -1477,11 +1477,10 @@ function loadDictionary() {
     console.error(`[Dictionary] Failed to load:`, err);
   }
 }
-loadDictionary();
 
 // ==========================================
 // 本地中日词典（用于「辨义选择」日语复习模式）
-// 启动时一次性加载 data/dictionary-jp.json 到内存
+// 惰性加载 data/dictionary-jp.json：首次用到日语辨义选择时才加载
 // 文件格式：{ "日语词": "（假名）音调【词性】中文释义" }（object，非 array）
 // ==========================================
 let jpDictionary: DictEntry[] = [];
@@ -1518,7 +1517,6 @@ function loadJapaneseDictionary() {
     console.error(`[JP Dictionary] Failed to load:`, err);
   }
 }
-loadJapaneseDictionary();
 
 // 计算两个单词的 Levenshtein 编辑距离
 function levenshtein(a: string, b: string): number {
@@ -1571,6 +1569,7 @@ function findSimilarWords(
   spelling: string,
   count: number = 5
 ): { word: string; definition: string }[] {
+  loadDictionary(); // 惰性加载（v1.9.6）：首次调用才加载词典，loaded 守卫保证只加载一次
   if (!dictionaryLoaded || dictionary.length === 0) return [];
   const target = spelling.trim().toLowerCase();
 
@@ -1639,6 +1638,7 @@ function findSimilarJapaneseWords(
   spelling: string,
   count: number = 5
 ): { word: string; definition: string }[] {
+  loadJapaneseDictionary(); // 惰性加载（v1.9.6）
   if (!jpDictionaryLoaded || jpDictionary.length === 0) return [];
   const target = spelling.trim();
 
