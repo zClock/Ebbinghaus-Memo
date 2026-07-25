@@ -163,14 +163,22 @@ export default function App() {
     setIsLoading(true);
     setErrorText("");
     try {
-      // 1. Fetch current data from local backend server
-      const fetchStatsPromise = fetchStats(t, lang);
-      const fetchWordsPromise = fetchWords(t, lang);
-      const fetchDueWordsPromise = fetchDueWords(t, lang);
-      const fetchHistoriesPromise = fetchHistories(t, lang);
-      const fetchPlansPromise = fetchPlansAndTypes(t);
-      await Promise.all([fetchStatsPromise, fetchWordsPromise, fetchDueWordsPromise, fetchHistoriesPromise, fetchPlansPromise]);
-
+      // v1.9.7: 首屏合并为单个 bootstrap 请求（原本 5 个并发请求），后端只查一次 words/histories
+      const res = await fetch(`/api/system/bootstrap?language=${encodeURIComponent(lang)}`, {
+        headers: { "Authorization": `Bearer ${t}` },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "加载数据失败");
+      }
+      const data = await res.json();
+      setStats(data.stats);
+      setWords(data.words || []);
+      setAllWords(data.allWords || []);
+      setDueWords(data.dueWords || []);
+      setHistories(data.histories || []);
+      setPlans(data.plans || []);
+      setTaskTypes(data.taskTypes || []);
       // Unlock UI immediately as local-server data loaded successfully
       setIsLoading(false);
     } catch (err: any) {

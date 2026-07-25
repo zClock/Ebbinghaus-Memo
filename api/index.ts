@@ -2126,6 +2126,125 @@ app.put("/api/auth/change-password", authMiddleware, async (req: any, res) => {
 
 // --- Stats / Words / Review Routes ---
 
+// 从内存数据计算 stats（供 /api/system/bootstrap 复用，逻辑与 /api/system/stats 一致）
+function computeStats(userWords: any[], userHistories: any[], vTime: Date, systemOffsetMs: number) {
+  const totalWords = userWords.length;
+  const dueTodayCount = userWords.filter(w => new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6).length;
+  const masteredCount = userWords.filter(w => w.reviewStage >= 5 || w.consecutiveCorrect >= 3).length;
+
+  const stageDistribution = [0, 0, 0, 0, 0, 0, 0];
+  userWords.forEach(w => {
+    if (w.reviewStage >= 0 && w.reviewStage <= 6) {
+      stageDistribution[w.reviewStage]++;
+    }
+  });
+
+  let currentStreak = 0;
+  let maxStreak = 0;
+  if (userHistories.length > 0) {
+    const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dateStrings = Array.from(new Set(
+      userHistories.map(h => formatDate(new Date(h.reviewedAt)))
+    ));
+    dateStrings.sort();
+    const datesSet = new Set(dateStrings);
+
+    let checkDate = new Date(vTime.getTime());
+    let checkStr = formatDate(checkDate);
+    if (datesSet.has(checkStr)) {
+      currentStreak = 1;
+      while (true) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        if (datesSet.has(formatDate(checkDate))) currentStreak++;
+        else break;
+      }
+    } else {
+      checkDate.setDate(checkDate.getDate() - 1);
+      if (datesSet.has(formatDate(checkDate))) {
+        currentStreak = 1;
+        while (true) {
+          checkDate.setDate(checkDate.getDate() - 1);
+          if (datesSet.has(formatDate(checkDate))) currentStreak++;
+          else break;
+        }
+      }
+    }
+
+    let tempStreak = 0;
+    let prevTimeMs: number | null = null;
+    for (const dateStr of dateStrings) {
+      const parts = dateStr.split("-").map(Number);
+      const curTimeMs = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+      if (prevTimeMs === null) {
+        tempStreak = 1;
+      } else {
+        const diffDays = Math.round((curTimeMs - prevTimeMs) / (24 * 60 * 60 * 1000));
+        if (diffDays === 1) tempStreak++;
+        else if (diffDays > 1) tempStreak = 1;
+      }
+      if (tempStreak > maxStreak) maxStreak = tempStreak;
+      prevTimeMs = curTimeMs;
+    }
+  }
+
+  return {
+    totalWords,
+    dueTodayCount,
+    masteredCount,
+    stageDistribution,
+    systemOffsetDays: Math.round(systemOffsetMs / (24 * 60 * 60 * 1000)),
+    virtualTime: vTime.toISOString(),
+    currentStreak,
+    maxStreak,
+  };
+}
+
+// 首屏合并接口（v1.9.7）：一次返回 stats + words + allWords + dueWords + histories + plans + taskTypes
+// 替代前端 loadAllData 原本的 5 个并发请求；后端只查一次 words + 一次 histories（消除重复全量拉取）
+app.get("/api/system/bootstrap", authMiddleware, async (req: any, res) => {
+  try {
+    const userId = req.userId;
+    const targetLang = req.query.language as string || "All";
+    const vTime = await getVirtualTime();
+    const systemOffsetMs = await getSystemOffsetMs();
+
+    // 查一次全量 words + histories（供 stats / 列表 / due / allWords 快照复用，不再重复拉取）
+    const allWords = await getUserWords(userId);
+    const allHistories = await getUserHistories(userId);
+
+    const langWords = targetLang === "All"
+      ? allWords
+      : allWords.filter(w => (w.language || "English") === targetLang);
+    const langHistories = targetLang === "All"
+      ? allHistories
+      : (() => {
+          const wordIds = new Set(langWords.map(w => w.id));
+          return allHistories.filter(h => wordIds.has(h.wordId));
+        })();
+
+    const stats = computeStats(langWords, langHistories, vTime, systemOffsetMs);
+    const dueWords = langWords.filter(w => new Date(w.nextReviewAt).getTime() <= vTime.getTime() && w.reviewStage < 6);
+
+    const [plans, taskTypes] = await Promise.all([
+      listUserPlans(userId),
+      getUserTaskTypes(userId),
+    ]);
+
+    res.json({
+      stats,
+      words: langWords,
+      allWords,
+      dueWords,
+      histories: langHistories,
+      plans,
+      taskTypes,
+    });
+  } catch (err: any) {
+    console.error("Bootstrap API error:", err);
+    res.status(500).json({ error: "加载首屏数据失败: " + (err.message || err) });
+  }
+});
+
 app.get("/api/system/stats", authMiddleware, async (req: any, res) => {
   try {
     const vTime = await getVirtualTime();
