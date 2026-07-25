@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.6（2026-07-24，首屏加速：路由 code splitting + 词典惰性加载，gzip 344→113KB）
+- **当前版本**：v1.9.7（2026-07-24，首屏 API 响应加速：bootstrap 合并 + DB 索引 + 字体优化）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -591,6 +591,14 @@
 ---
 
 ## 9. 版本历史
+
+**v1.9.7（2026-07-24）**：首屏 API 响应加速（解决"正在加载系统时序数据..."久）
+- 🔴 性能：新增 `GET /api/system/bootstrap`，一次返回 stats + words + allWords + dueWords + histories + plans + taskTypes；后端只查一次 words + 一次 histories（原本 5 个并发请求各自重复全量拉取 words 3-4 次 / histories 2 次）。前端 `loadAllData` 改为单次请求分发到各 state（5→1）
+- 🔴 性能：`words` / `histories` 表补 `user_id` 索引（schema 原本漏建，`.eq("user_id", X)` 全表扫描，首屏随数据增长越来越慢）
+- 🟢 性能：字体从 CSS `@import`（阻塞 CSSOM）改为 `preconnect` + `<link rel=stylesheet>`（并行加载，不阻塞渲染）
+- 🔧 重构：抽 `computeStats` 纯函数供 bootstrap 复用（`/api/system/stats` 保持原样供增量刷新）
+- ⚠️ 部署：线上 Supabase 需手动执行 2 条 `CREATE INDEX`（schema 已更新，但既有库不会自动建索引）
+- ✅ 测试：lint 0 新错误 / E2E 19✓（全绿，无回归）
 
 **v1.9.6（2026-07-24）**：首屏加载性能优化
 - 🔴 性能：路由级 code splitting。[App.tsx](file:///src/App.tsx) 将 Dashboard / WordList / ReviewSession / Profile / FootballRules / LearningPlans 改为 `React.lazy` + `Suspense`，首屏(登录页)只加载 Auth / Navbar，其他视图按需加载
