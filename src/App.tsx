@@ -1,15 +1,26 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import Navbar from "./components/Navbar";
-import Dashboard from "./components/Dashboard";
-import WordList from "./components/WordList";
-import ReviewSession from "./components/ReviewSession";
 import Auth from "./components/Auth";
-import Profile from "./components/Profile";
-import FootballRules from "./components/FootballRules";
-import LearningPlans from "./components/LearningPlans";
 import { BookOpen, GraduationCap, RefreshCw, AlertCircle, Calendar } from "lucide-react";
 import { getTranslation } from "./lib/translations";
 import { LearningPlan, LearningTask, TaskType } from "./types";
+
+// 路由级 code splitting（v1.9.6）：首屏(登录页)只加载 Auth/Navbar，
+// 其他视图按需加载，剥离 recharts/motion/FootballRules/LearningPlans 等大块
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const WordList = lazy(() => import("./components/WordList"));
+const ReviewSession = lazy(() => import("./components/ReviewSession"));
+const Profile = lazy(() => import("./components/Profile"));
+const FootballRules = lazy(() => import("./components/FootballRules"));
+const LearningPlans = lazy(() => import("./components/LearningPlans"));
+
+// 视图懒加载时的轻量占位
+const ViewSkeleton = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin"></div>
+  </div>
+);
+
 
 interface Word {
   id: string;
@@ -787,7 +798,7 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <>
+          <Suspense fallback={<ViewSkeleton />}>
             {/* View Switching Router */}
             {currentView === "dashboard" && (
               <Dashboard
@@ -905,7 +916,7 @@ export default function App() {
                 useTargetUi={useTargetUi}
               />
             )}
-          </>
+          </Suspense>
         )}
       </main>
 

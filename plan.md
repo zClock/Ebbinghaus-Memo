@@ -125,6 +125,12 @@
 
 ## 7. 已完成项目归档
 
+### v1.9.6（2026-07-24）：首屏加载性能优化
+- ✅ [src/App.tsx](file:///src/App.tsx) Dashboard / WordList / ReviewSession / Profile / FootballRules / LearningPlans 改为 `React.lazy` + `Suspense`，首屏只加载 Auth / Navbar
+- ✅ [vite.config.ts](file:///vite.config.ts) 加 `manualChunks`：react / recharts / motion 拆独立 vendor chunk
+- ✅ [api/index.ts](file:///api/index.ts) 词典从「启动时同步加载」改为「首次用到时惰性加载」（`loadDictionary()` 移出模块顶层，改到 `findSimilarWords` / `findSimilarJapaneseWords` 入口）
+- ✅ 效果：首屏 JS gzip 344KB → 113KB（-67%）；E2E 19/19 全绿无回归
+
 ### v1.9.5（2026-07-23）：词库批量删除
 - ✅ [api/index.ts](file:///api/index.ts) 新增 `deleteWords(userId, wordIds[])` DAO + `POST /api/words/batch-delete` 端点（body `{ids}`，上限 200）
   - histories：Supabase 靠 `word_id ON DELETE CASCADE` 自动清；本地 JSON 手动 filter
