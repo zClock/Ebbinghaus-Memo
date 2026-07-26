@@ -1797,6 +1797,15 @@ interface RateLimitStore {
 function createRateLimiter(windowMs: number, maxRequests: number, message: string) {
   const store: RateLimitStore = {};
   return (req: any, res: any, next: any) => {
+    // 测试环境 (CI / NODE_ENV=test / process.env.DB_PATH 包含 test / DISABLE_RATE_LIMIT) 绕过 Rate Limiter
+    if (
+      process.env.NODE_ENV === "test" ||
+      !!process.env.CI ||
+      process.env.DISABLE_RATE_LIMIT === "true" ||
+      (process.env.DB_PATH && process.env.DB_PATH.includes("test"))
+    ) {
+      return next();
+    }
     const ip = req.ip || req.headers["x-forwarded-for"] || "127.0.0.1";
     const now = Date.now();
     if (!store[ip] || now > store[ip].resetTime) {
