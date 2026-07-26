@@ -9,16 +9,18 @@
 
 ## 1. 安全与可靠性（P0）
 
-### 1.1 🔲 密码哈希升级
-- **现状**：`crypto.createHash("sha256")` 单次哈希，无 salt
-- **目标**：迁移到 `bcrypt` 或 `argon2`，保留旧 hash 的渐进式升级（登录时检测到旧格式自动 rehash）
-- **影响范围**：[api/index.ts](file:///api/index.ts) 的 `hashPassword` + 数据库 `password_hash` 字段
-- **风险**：上线前必须做兼容期，否则老用户无法登录
+### 1.1 ✅ 密码哈希升级与平滑无感迁移（v1.9.9 完成）
+- **现状**：原为 `crypto.createHash("sha256")` 单次无盐哈希。
+- **v1.9.9 修复**：迁移到 Node 原生加盐 `scrypt` 算法（16 字节随机 Salt），并在 `/api/auth/login` 加入旧版 SHA-256 密码哈希的**无感自动平滑升级机制**，旧用户登录成功时会自动升级为加盐 `scrypt` 哈希。
 
-### 1.2 🔲 AI Provider 密钥保护
-- **现状**：`.env.local` 明文存放 Gemini/GLM/Supabase Service Role 密钥
-- **目标**：补充文档/检查清单，避免 service_role key 被意外提交
-- **现状**：`.env*` 已在 `.gitignore`，但建议加 `git secrets` 或 pre-commit 钩子
+### 1.2 ✅ 敏感凭证脱敏与数据库行级防护（v1.9.9 完成）
+- **现状**：原本 `.env.local` 含有明文 Api Key，Supabase 缺少 RLS。
+- **v1.9.9 修复**：
+  - 清理了 `.env.local` 中的敏感凭证，替换为占位符。
+  - 在 `supabase-schema.sql` 中为所有 10 张数据表显式开启了 Row Level Security (RLS) 行级保护。
+  - 增加基于滑动窗口的 Rate Limiting 中间件（登录 10次/15分钟，AI 20次/5分钟）。
+  - 生产环境下屏蔽高危系统调试接口 (`/api/system/time-travel`, `/api/system/reset`)。
+  - ID 生成全面提升为 `crypto.randomUUID()`，并增加了密码长度校验（≥8位）与 API 错误信息脱敏。
 
 ---
 

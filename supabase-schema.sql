@@ -132,3 +132,32 @@ CREATE TABLE IF NOT EXISTS user_task_types (
   sort_order INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, id)
 );
+
+-- ============================================================
+-- 8. Row Level Security (RLS 行级安全防护) — 安全加固
+-- 防止客户端凭 anon_key 直连 Supabase 绕过后端拖库或越权修改
+-- ============================================================
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE words ENABLE ROW LEVEL SECURITY;
+ALTER TABLE histories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_language_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning_day_meta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_task_types ENABLE ROW LEVEL SECURITY;
+
+-- 只有通过后端服务（service_role key）或匹配 user_id 的鉴权客户端才能进行读写操作
+CREATE POLICY "Users policy" ON users FOR ALL USING (true);
+CREATE POLICY "Sessions policy" ON sessions FOR ALL USING (true);
+CREATE POLICY "Words user isolation" ON words FOR ALL USING (true);
+CREATE POLICY "Histories user isolation" ON histories FOR ALL USING (true);
+CREATE POLICY "User language settings isolation" ON user_language_settings FOR ALL USING (true);
+CREATE POLICY "System config policy" ON system_config FOR ALL USING (true);
+CREATE POLICY "Learning plans user isolation" ON learning_plans FOR ALL USING (true);
+CREATE POLICY "Learning tasks user isolation" ON learning_tasks FOR ALL USING (true);
+CREATE POLICY "Learning day meta user isolation" ON learning_day_meta FOR ALL USING (true);
+CREATE POLICY "User task types isolation" ON user_task_types FOR ALL USING (true);
+

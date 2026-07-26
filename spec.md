@@ -2,7 +2,7 @@
 
 > 本文件记录**当前已实现的功能规格**，作为后续开发的功能基线。新需求来临时在此文件追加版本号 + 增量章节。
 
-- **当前版本**：v1.9.8（2026-07-24，bootstrap 内部查询全并行）
+- **当前版本**：v1.9.9（2026-07-26，系统安全与审计漏洞全面修复加固）
 - **维护策略**：只记录"已实现"，未实现的内容写到 [plan.md](file:///plan.md)
 
 ---
@@ -269,6 +269,20 @@
 | GET | `/api/user/task-types` | 获取用户的任务类型配置（首次为空时自动种默认 4 种）|
 | PUT | `/api/user/task-types` | 全量替换用户任务类型配置 |
 | POST | `/api/plans/migrate` | 一次性迁移 localStorage → 数据库（幂等，按 plan ID 去重）|
+
+---
+
+## §1.13 系统安全与防刷加固（v1.9.9）
+
+针对数据库、认证层及接口访问进行全面的安全审计与漏洞修复：
+- **Supabase 行级安全 (RLS)**：为 10 张表开启 `ENABLE ROW LEVEL SECURITY` 并配置策略，防止凭 anon_key 直连拖库或越权篡改。
+- **加盐密码哈希 (scrypt) & 无感升级**：采用 16 字节随机盐 + `crypto.scryptSync`，并支持旧版无盐 SHA-256 哈希在用户登录时自动平滑升级。
+- **密码强度限制**：注册和修改密码时强制要求密码长度 ≥ 8 位。
+- **速率限制 (Rate Limiting)**：基于滑动窗口对登录/注册限制 15 分钟最多 10 次，对 AI 批量导入及重新生成限制 5 分钟最多 20 次。
+- **系统调试接口环境防护**：`/api/system/time-travel` 与 `/api/system/reset` 限制仅在非生产开发环境可用。
+- **密码学强随机 ID**：所有 ID 生成由 `Math.random()` 升级为 `crypto.randomUUID()`。
+- **错误堆栈脱敏**：移除了 catch 块向客户端透传 `err.message` 的逻辑，防止底层架构信息泄露。
+- **HTTP 安全响应头**：配置 `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`。
 
 ---
 

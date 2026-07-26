@@ -780,7 +780,7 @@ async function submitReview(userId: string, reviewResults: any[], vTime: Date): 
         updatedWords.push(word);
 
         const history = {
-          id: "hist_" + Math.random().toString(36).substring(2, 11),
+          id: "hist_" + crypto.randomUUID(),
           userId,
           wordId,
           wordSpelling: word.spelling,
@@ -844,7 +844,7 @@ async function submitReview(userId: string, reviewResults: any[], vTime: Date): 
     updatedWords.push({ ...word });
 
     const history = {
-      id: "hist_" + Math.random().toString(36).substring(2, 11),
+      id: "hist_" + crypto.randomUUID(),
       userId,
       wordId,
       wordSpelling: word.spelling,
@@ -1782,6 +1782,38 @@ const defaultWords = [
 // Middlewares
 app.use(express.json());
 
+// Security Headers Middleware
+app.use((req: any, res: any, next: any) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  next();
+});
+
+// Sliding Window Rate Limiter Helper
+interface RateLimitStore {
+  [key: string]: { count: number; resetTime: number };
+}
+function createRateLimiter(windowMs: number, maxRequests: number, message: string) {
+  const store: RateLimitStore = {};
+  return (req: any, res: any, next: any) => {
+    const ip = req.ip || req.headers["x-forwarded-for"] || "127.0.0.1";
+    const now = Date.now();
+    if (!store[ip] || now > store[ip].resetTime) {
+      store[ip] = { count: 1, resetTime: now + windowMs };
+      return next();
+    }
+    store[ip].count++;
+    if (store[ip].count > maxRequests) {
+      return res.status(429).json({ error: message });
+    }
+    next();
+  };
+}
+
+const authLimiter = createRateLimiter(15 * 60 * 1000, 10, "请求频繁，请 15 分钟后再试。");
+const aiLimiter = createRateLimiter(5 * 60 * 1000, 20, "AI 生成请求频繁，请 5 分钟后再试。");
+
 // Helper to get virtual simulated time (Real time + Time Travel Offset)
 async function getVirtualTime(): Promise<Date> {
   const offset = await getSystemOffsetMs();
@@ -1958,9 +1990,32 @@ async function processWithConcurrency<T, R>(
 
 // （原 generateDistractorWords AI 函数已废弃，改为本地词典 + 编辑距离算法 findSimilarWords）
 
-// Password hashing helper
+// Password hashing helper (scrypt with 16-byte random salt)
 function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derivedKey = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${derivedKey}`;
+}
+
+// Backward-compatible password verification (supports legacy SHA-256 + scrypt)
+function verifyPassword(password: string, storedHash: string): { valid: boolean; needsUpgrade: boolean } {
+  if (!storedHash) return { valid: false, needsUpgrade: false };
+  if (storedHash.includes(":")) {
+    const [salt, key] = storedHash.split(":");
+    const keyBuffer = Buffer.from(key, "hex");
+    const derivedKey = crypto.scryptSync(password, salt, 64);
+    if (keyBuffer.length === derivedKey.length && crypto.timingSafeEqual(keyBuffer, derivedKey)) {
+      return { valid: true, needsUpgrade: false };
+    }
+    return { valid: false, needsUpgrade: false };
+  } else {
+    // Legacy single SHA-256
+    const legacyHash = crypto.createHash("sha256").update(password).digest("hex");
+    if (legacyHash === storedHash) {
+      return { valid: true, needsUpgrade: true };
+    }
+    return { valid: false, needsUpgrade: false };
+  }
 }
 
 // Authentication middleware
@@ -1993,10 +2048,14 @@ const authMiddleware = async (req: any, res: any, next: any) => {
 
 // --- Auth Routes ---
 
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", authLimiter, async (req, res) => {
   const { email, password, name, level, dailyGoal } = req.body;
   if (!email || !password || !name) {
     return res.status(400).json({ error: "请填写完整的邮箱、密码和昵称。" });
+  }
+
+  if (typeof password !== "string" || password.length < 8) {
+    return res.status(400).json({ error: "密码长度不能少于 8 个字符。" });
   }
 
   const cleanEmail = email.trim().toLowerCase();
@@ -2006,7 +2065,7 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ error: "该邮箱已被注册，请直接登录。" });
     }
 
-    const userId = "usr_" + Math.random().toString(36).substring(2, 11);
+    const userId = "usr_" + crypto.randomUUID();
     const newUser: User = {
       id: userId,
       email: cleanEmail,
@@ -2017,7 +2076,7 @@ app.post("/api/auth/register", async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    await createUser(newUser, []);  // 新用户不再自动塞入种子词，等用户自行添加
+    await createUser(newUser, []);
 
     const token = crypto.randomBytes(32).toString("hex");
     const session: Session = {
@@ -2031,11 +2090,11 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(201).json({ user: safeUser, token });
   } catch (err: any) {
     console.error("Registration error:", err);
-    res.status(500).json({ error: "注册失败，请重试。详情: " + (err.message || err) });
+    res.status(500).json({ error: "注册失败，请稍后重试。" });
   }
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: "请填写邮箱和密码。" });
@@ -2044,8 +2103,20 @@ app.post("/api/auth/login", async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
   try {
     const user = await findUserByEmail(cleanEmail);
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user) {
       return res.status(400).json({ error: "邮箱或密码错误。" });
+    }
+
+    const verification = verifyPassword(password, user.passwordHash);
+    if (!verification.valid) {
+      return res.status(400).json({ error: "邮箱或密码错误。" });
+    }
+
+    // 自动平滑升级旧版 SHA-256 密码哈希至加盐 scrypt
+    if (verification.needsUpgrade) {
+      const newHash = hashPassword(password);
+      await updateUser(user.id, { passwordHash: newHash });
+      user.passwordHash = newHash;
     }
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -2060,7 +2131,7 @@ app.post("/api/auth/login", async (req, res) => {
     res.json({ user: safeUser, token });
   } catch (err: any) {
     console.error("Login error:", err);
-    res.status(500).json({ error: "登录失败，请重试。详情: " + (err.message || err) });
+    res.status(500).json({ error: "登录失败，请稍后重试。" });
   }
 });
 
@@ -2110,9 +2181,13 @@ app.put("/api/auth/change-password", authMiddleware, async (req: any, res) => {
     return res.status(400).json({ error: "请填写旧密码和新密码。" });
   }
 
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    return res.status(400).json({ error: "新密码长度不能少于 8 个字符。" });
+  }
+
   try {
     const user = await findUserById(req.userId);
-    if (!user || user.passwordHash !== hashPassword(oldPassword)) {
+    if (!user || !verifyPassword(oldPassword, user.passwordHash).valid) {
       return res.status(400).json({ error: "旧密码错误。" });
     }
 
@@ -2492,7 +2567,7 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
 
     const vTime = await getVirtualTime();
     const newWord = {
-      id: "word_" + Math.random().toString(36).substring(2, 11),
+      id: "word_" + crypto.randomUUID(),
       userId,
       spelling: cleanSpelling,
       phonetic,
@@ -2514,11 +2589,11 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
     res.status(201).json(newWord);
   } catch (err: any) {
     console.error("Create word error:", err);
-    res.status(500).json({ error: "创建单词失败: " + (err.message || err) });
+    res.status(500).json({ error: "创建单词失败，请稍后重试。" });
   }
 });
 
-app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
+app.post("/api/words/import-batch", authMiddleware, aiLimiter, async (req: any, res) => {
   const { spellings, language, mode: rawMode } = req.body;
   if (!spellings || !Array.isArray(spellings)) {
     return res.status(400).json({ error: "Spellings 必须是一个数组" });
@@ -2658,7 +2733,7 @@ app.post("/api/words/import-batch", authMiddleware, async (req: any, res) => {
       }
 
       return {
-        id: "word_" + Math.random().toString(36).substring(2, 11),
+        id: "word_" + crypto.randomUUID(),
         userId: req.userId,
         spelling: cleanSpelling,
         phonetic,
@@ -2775,7 +2850,7 @@ app.patch("/api/words/:id", authMiddleware, async (req: any, res) => {
   }
 });
 
-app.post("/api/words/:id/regenerate", authMiddleware, async (req: any, res) => {
+app.post("/api/words/:id/regenerate", authMiddleware, aiLimiter, async (req: any, res) => {
   const { id } = req.params;
   if (!ai) {
     return res.status(400).json({ error: "Gemini API 密钥未配置，无法进行 AI 重新生成。" });
@@ -2855,6 +2930,10 @@ app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
 });
 
 app.post("/api/system/time-travel", authMiddleware, async (req: any, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "生产环境禁用时间旅行接口。" });
+  }
+
   const { days } = req.body;
   if (typeof days !== "number") {
     return res.status(400).json({ error: "Days count must be a number" });
@@ -2879,6 +2958,10 @@ app.post("/api/system/time-travel", authMiddleware, async (req: any, res) => {
 });
 
 app.post("/api/system/reset", authMiddleware, async (req: any, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "生产环境禁用重置接口。" });
+  }
+
   const { fullReset, language } = req.body;
   try {
     const vTime = await getVirtualTime();
@@ -2896,7 +2979,7 @@ app.post("/api/system/reset", authMiddleware, async (req: any, res) => {
     }
   } catch (err: any) {
     console.error("System reset error:", err);
-    res.status(500).json({ error: "重置失败: " + (err.message || err) });
+    res.status(500).json({ error: "重置失败，请稍后重试。" });
   }
 });
 
