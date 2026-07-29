@@ -2490,7 +2490,7 @@ app.get("/api/words/due", authMiddleware, async (req: any, res) => {
   }
 });
 
-app.post("/api/words/create", authMiddleware, async (req: any, res) => {
+app.post("/api/words/create", authMiddleware, aiLimiter, async (req: any, res) => {
   const { spelling, language } = req.body;
   if (!spelling || !spelling.trim()) {
     return res.status(400).json({ error: "Word spelling is required" });
