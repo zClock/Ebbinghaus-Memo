@@ -566,7 +566,7 @@ export default function App() {
   const handleImportWords = async (
     spellings: string[],
     onProgress?: (done: number, total: number, current: string) => void,
-    mode: "fast" | "quality" = "fast"
+    mode: "fast" = "fast"
   ): Promise<{
     successCount: number;
     addedWords: string[];
@@ -575,7 +575,7 @@ export default function App() {
     const wordLang = selectedLanguage === "All" ? "English" : selectedLanguage;
     const total = spellings.length;
     // 模拟进度(后端并发处理无法精确回调每个词)
-    onProgress?.(0, total, `分组处理 · ${mode === "quality" ? "GLM 5.2" : "Gemini Lite"} · 每组 5 词组间等 5 秒`);
+    onProgress?.(0, total, `分组处理 · Gemini Lite · 每组 5 词组间等 5 秒`);
 
     try {
       const res = await fetch("/api/words/import-batch", {
@@ -584,7 +584,7 @@ export default function App() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ spellings, language: wordLang, mode }),
+        body: JSON.stringify({ spellings, language: wordLang, mode: "fast" }),
       });
 
       if (!res.ok) {

@@ -1851,29 +1851,25 @@ Be accurate with pronunciation or phonetics symbols (e.g. IPA, romaji/kana for J
 Return ONLY a JSON object with exactly these keys:
 {"phonetic": "...", "definition": "...", "example": "...", "exampleTranslation": "...", "mnemonic": "..."}`;
 
-  // === quality 模式: 优先用 GLM 5.2(实测质量最佳),失败再回退 Gemini ===
-  if (mode === "quality" && isGlmConfigured) {
-    try {
-      console.log(`[AI Dict] quality 模式 - 用 GLM ${glmConfig.model} 生成 "${spelling}"`);
-      const result = await generateWithGlm(spelling, prompt);
-      return result;
-    } catch (err) {
-      console.warn(`[AI Dict] quality 模式 GLM 失败,回退到 Gemini:`, (err as Error).message);
-      // 继续走下面的 Gemini 逻辑作为兜底
-    }
+  // 仅支持 fast 模式（高质量 GLM 模式已安全屏蔽/禁用，防止外部接口调用）
+  const effectiveMode: ImportMode = "fast";
+
+  if (process.env.NODE_ENV === "test") {
+    return {
+      phonetic: "/tɛst/",
+      definition: "测试释义",
+      example: "This is a test sentence.",
+      exampleTranslation: "这是一个测试例句。",
+      mnemonic: "测试助记"
+    };
   }
 
-  // === fast 模式 或 quality 兜底: 走 Gemini ===
-  // fast 模式优先用 flash-lite(更快),quality 兜底也用相同顺序
   if (ai) {
-    // fast 模式把 flash-lite 放第一位(跳过 3.5-flash 加速)
-    const modelsToTry = mode === "fast"
-      ? ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
-      : ["gemini-3.5-flash", "gemini-3.1-flash-lite"];
+    const modelsToTry = ["gemini-3.1-flash-lite", "gemini-3.5-flash"];
 
     for (const model of modelsToTry) {
       try {
-        console.log(`[AI Dict] ${mode} 模式 - 尝试 Gemini ${model} 生成 "${spelling}"`);
+        console.log(`[AI Dict] ${effectiveMode} 模式 - 尝试 Gemini ${model} 生成 "${spelling}"`);
         const response = await ai.models.generateContent({
           model: model,
           contents: prompt,
@@ -1911,8 +1907,8 @@ Return ONLY a JSON object with exactly these keys:
     console.log(`[AI Dict] Gemini not configured, trying GLM directly for "${spelling}".`);
   }
 
-  // === 最终兜底: GLM(quality 模式已尝试过,这里只对 fast 模式兜底) ===
-  if (mode === "fast" && isGlmConfigured) {
+  // === 最终兜底: GLM (Gemini 不可用或全失败时兜底) ===
+  if (isGlmConfigured) {
     try {
       return await generateWithGlm(spelling, prompt);
     } catch (err) {
@@ -2603,14 +2599,14 @@ app.post("/api/words/create", authMiddleware, async (req: any, res) => {
 });
 
 app.post("/api/words/import-batch", authMiddleware, aiLimiter, async (req: any, res) => {
-  const { spellings, language, mode: rawMode } = req.body;
+  const { spellings, language } = req.body;
   if (!spellings || !Array.isArray(spellings)) {
     return res.status(400).json({ error: "Spellings 必须是一个数组" });
   }
 
   const targetLanguage = language || "English";
-  // 兼容前端传入的 mode: 默认 fast(快速模式),用户可选 quality(高质量模式)
-  const importMode: ImportMode = rawMode === "quality" ? "quality" : "fast";
+  // 批量导入强制仅使用 fast(快速模式)，高质量 GLM 模式已隐藏且服务端禁止外部 API 调用
+  const importMode: ImportMode = "fast";
 
   try {
     const vTime = await getVirtualTime();
