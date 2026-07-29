@@ -51,7 +51,7 @@ interface WordListProps {
   onImportWords?: (
     spellings: string[],
     onProgress?: (done: number, total: number, current: string) => void,
-    mode?: "fast" | "quality"
+    mode?: "fast"
   ) => Promise<{
     successCount: number;
     addedWords: string[];
@@ -86,16 +86,13 @@ export default function WordList({
   const [batchText, setBatchText] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; current: string } | null>(null);
-  // 导入模式: fast=快速(Gemini Lite + 并发) / quality=高质量(GLM 5.2)
-  // 从 localStorage 读取用户上次的选择,默认 fast
-  const [importMode, setImportMode] = useState<"fast" | "quality">(() => {
+  // 导入模式: 固定为 快速模式 (fast)，高质量 GLM 模式已隐藏并禁用
+  const importMode = "fast";
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem("ebbinghaus_import_mode");
-      return saved === "quality" ? "quality" : "fast";
-    } catch {
-      return "fast";
-    }
-  });
+      localStorage.setItem("ebbinghaus_import_mode", "fast");
+    } catch {}
+  }, []);
   const [isDragging, setIsDragging] = useState(false);
   const [importResult, setImportResult] = useState<{
     successCount: number;
@@ -889,62 +886,28 @@ export default function WordList({
                   />
                 </div>
 
-                {/* 导入模式选择 (v1.9.2 新增) */}
+                {/* 导入模式显示 (已保留快速模式，隐藏高质量 GLM) */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     {useTargetUi ? "Generation Mode" : "生成模式"}
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={isImporting}
-                      onClick={() => {
-                        setImportMode("fast");
-                        try { localStorage.setItem("ebbinghaus_import_mode", "fast"); } catch {}
-                      }}
-                      className={`p-3 rounded-xl text-left transition-all border-2 ${
-                        importMode === "fast"
-                          ? "border-indigo-500 bg-indigo-50/60 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300"
-                      } ${isImporting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-base">⚡</span>
-                        <span className="text-xs font-bold text-slate-800">
+                  <div className="p-3 rounded-xl border-2 border-indigo-500 bg-indigo-50/60 shadow-sm flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚡</span>
+                      <div>
+                        <div className="text-xs font-bold text-slate-800">
                           {useTargetUi ? "Fast" : "快速"}
-                        </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-relaxed font-light">
+                          {useTargetUi
+                            ? "Gemini Flash Lite · ~6s/30 words"
+                            : "Gemini Flash Lite · 30 词约 6 秒"}
+                        </p>
                       </div>
-                      <p className="text-[10px] text-slate-500 leading-relaxed font-light">
-                        {useTargetUi
-                          ? "Gemini Flash Lite · ~6s/30 words"
-                          : "Gemini Flash Lite · 30 词约 6 秒"}
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isImporting}
-                      onClick={() => {
-                        setImportMode("quality");
-                        try { localStorage.setItem("ebbinghaus_import_mode", "quality"); } catch {}
-                      }}
-                      className={`p-3 rounded-xl text-left transition-all border-2 ${
-                        importMode === "quality"
-                          ? "border-emerald-500 bg-emerald-50/60 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300"
-                      } ${isImporting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-base">🎯</span>
-                        <span className="text-xs font-bold text-slate-800">
-                          {useTargetUi ? "Quality" : "高质量"}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 leading-relaxed font-light">
-                        {useTargetUi
-                          ? "GLM 5.2 · ~30s/30 words"
-                          : "GLM 5.2 · 30 词约 30 秒"}
-                      </p>
-                    </button>
+                    </div>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 font-medium px-2 py-0.5 rounded-full">
+                      {useTargetUi ? "Default" : "默认"}
+                    </span>
                   </div>
                 </div>
 
