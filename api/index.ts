@@ -2907,7 +2907,15 @@ app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
     }
 
     // 根据 word.language 路由到对应词典
+    // ⚠️ 先触发惰性加载再做可用性检查：v1.9.6 改惰性后 loadDictionary 只在
+    // findSimilarWords 内部调用，而下面预检查在它之前读 dictionaryLoaded 标志，
+    // 导致首次请求永远 500「本地词典未加载」（辨义模式全挂）
     const isJapanese = word.language === "Japanese";
+    if (isJapanese) {
+      loadJapaneseDictionary();
+    } else {
+      loadDictionary();
+    }
     const dictLoaded = isJapanese ? jpDictionaryLoaded : dictionaryLoaded;
     if (!dictLoaded) {
       return res.status(500).json({
