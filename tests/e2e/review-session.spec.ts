@@ -116,4 +116,163 @@ test.describe("复习会话", () => {
     expect(json).toBeTruthy();
     expect(json.updatedWords || json.newHistories).toBeTruthy();
   });
+
+  // ===== 短语支持（v1.10）=====
+
+  // 直写一个「已到期」的词到 db（fixtures.addWordToDb 种的词永不到期，字段名也不同）
+  function seedDueWord(db: any, userId: string, spelling: string) {
+    db.words.push({
+      id: "w_" + Math.random().toString(36).slice(2, 11),
+      userId,
+      language: "English",
+      spelling,
+      phonetic: "",
+      definition: `【${spelling}】的中文释义`,
+      example: "",
+      exampleTranslation: "",
+      mnemonic: "",
+      audioUrl: "",
+      reviewStage: 1,
+      consecutiveCorrect: 0,
+      nextReviewAt: new Date(Date.now() - 60_000).toISOString(),
+      lastResetAt: null,
+      lastReviewedAt: null,
+      reviewCount: 0,
+      correctCount: 0,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  test("拼写模式:短语宽松判定（多余空格与大小写不误判）", async ({ page, apiHelpers }) => {
+    const email = apiHelpers.uniqueEmail("phrase_spell");
+    const { userId } = await apiHelpers.register(email, PASSWORD);
+
+    const dbPath = "data/db.test.json";
+    const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+    seedDueWord(db, userId, "give up");
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), "utf8");
+
+    await page.goto("/");
+    await page.locator('input[type="email"]').first().waitFor({ state: "visible" });
+    await page.locator('input[type="email"]').first().fill(email);
+    await page.locator('input[type="password"]').first().fill(PASSWORD);
+    await page.getByRole("button", { name: /登录智能词库/ }).click();
+    await page.waitForLoadState("networkidle");
+
+    const reviewBtn = page.getByRole("button", { name: /复习|Review|復習/i }).first();
+    await reviewBtn.waitFor({ state: "visible", timeout: 8_000 });
+    await reviewBtn.click();
+
+    // 选拼写模式 + 启动
+    await page.locator("#btn-mode-spelling").click();
+    await page.locator("#btn-start-review-session").click();
+
+    // 输入带多余空格和大小写差异的答案 —— 宽松比对应判对
+    await page.locator("#input-spelling-answer").waitFor({ state: "visible", timeout: 10_000 });
+    await page.locator("#input-spelling-answer").fill("  Give   UP ");
+    await page.locator("#btn-spelling-submit").click();
+
+    await expect(page.getByText(/完全正确|Correct|正解/i).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("#btn-spelling-next")).toBeVisible();
+  });
+
+  test("辨义模式:跳过短语且不误推短语 SRS（泄漏回归）", async ({ page, apiHelpers }) => {
+    const email = apiHelpers.uniqueEmail("phrase_def");
+    const { userId } = await apiHelpers.register(email, PASSWORD);
+
+    const dbPath = "data/db.test.json";
+    const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+    seedDueWord(db, userId, "deadline");
+    seedDueWord(db, userId, "give up");
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), "utf8");
+
+    await page.goto("/");
+    await page.locator('input[type="email"]').first().waitFor({ state: "visible" });
+    await page.locator('input[type="email"]').first().fill(email);
+    await page.locator('input[type="password"]').first().fill(PASSWORD);
+    await page.getByRole("button", { name: /登录智能词库/ }).click();
+    await page.waitForLoadState("networkidle");
+
+    // 辨义模式按钮仅在语言筛选为具体语言（English/Japanese）时渲染，先切到英语
+    await page.getByRole("combobox").nth(1).selectOption({ label: "英语 (EN)" });
+    await page.waitForTimeout(500);
+
+    const reviewBtn = page.getByRole("button", { name: /复习|Review|復習/i }).first();
+    await reviewBtn.waitFor({ state: "visible", timeout: 8_000 });
+    await reviewBtn.click();
+
+    // 选辨义模式：应显示跳过提示
+    await page.locator("#btn-mode-definition").click();
+    await expect(page.getByText(/已跳过 1 个短语|1 phrases skipped/i).first()).toBeVisible({ timeout: 5_000 });
+
+    // 启动后队列只有 1 个词（deadline）
+    await page.locator("#btn-start-review-session").click();
+    await expect(page.getByText("1 / 1").first()).toBeVisible({ timeout: 15_000 });
+
+    // 答题：选出正确拼写 deadline
+    const correctOption = page.getByRole("button", { name: /deadline/ }).first();
+    await correctOption.waitFor({ state: "visible", timeout: 20_000 });
+    await correctOption.click();
+    await page.locator("#btn-definition-next").click();
+
+    // 结算并同步结果
+    const syncBtn = page.locator("#btn-sync-review-results");
+    await syncBtn.waitFor({ state: "visible", timeout: 10_000 });
+    await syncBtn.click();
+
+    // 直读测试库断言：deadline 正常推进；give up 原封不动（未被凭空标对）
+    await expect
+      .poll(async () => {
+        const after = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+        const deadline = after.words.find((w: any) => w.spelling === "deadline");
+        const giveUp = after.words.find((w: any) => w.spelling === "give up");
+        return {
+          deadlineStage: deadline?.reviewStage,
+          giveUpStage: giveUp?.reviewStage,
+          giveUpNext: giveUp?.nextReviewAt,
+          giveUpHistory: (after.histories || []).some(
+            (h: any) => h.wordSpelling === "give up"
+          ),
+        };
+      }, { timeout: 15_000 })
+      .toEqual({
+        deadlineStage: 2, // 答对 → 阶段 1 → 2
+        giveUpStage: 1, // 短语未参与，阶段不变
+        giveUpNext: db.words.find((w: any) => w.spelling === "give up").nextReviewAt, // 复习时间原封不动
+        giveUpHistory: false, // 没有假 history
+      });
+  });
+
+  test("辨义模式:待复习全是短语时禁用启动并提示", async ({ page, apiHelpers }) => {
+    const email = apiHelpers.uniqueEmail("phrase_only");
+    const { userId } = await apiHelpers.register(email, PASSWORD);
+
+    const dbPath = "data/db.test.json";
+    const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+    seedDueWord(db, userId, "give up");
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), "utf8");
+
+    await page.goto("/");
+    await page.locator('input[type="email"]').first().waitFor({ state: "visible" });
+    await page.locator('input[type="email"]').first().fill(email);
+    await page.locator('input[type="password"]').first().fill(PASSWORD);
+    await page.getByRole("button", { name: /登录智能词库/ }).click();
+    await page.waitForLoadState("networkidle");
+
+    // 辨义模式按钮仅在语言筛选为具体语言（English/Japanese）时渲染，先切到英语
+    await page.getByRole("combobox").nth(1).selectOption({ label: "英语 (EN)" });
+    await page.waitForTimeout(500);
+
+    const reviewBtn = page.getByRole("button", { name: /复习|Review|復習/i }).first();
+    await reviewBtn.waitFor({ state: "visible", timeout: 8_000 });
+    await reviewBtn.click();
+
+    await page.locator("#btn-mode-definition").click();
+
+    // 启动按钮禁用 + 空态提示可见
+    await expect(page.locator("#btn-start-review-session")).toBeDisabled();
+    await expect(
+      page.getByText(/均为短语|All due items are phrases/i).first()
+    ).toBeVisible({ timeout: 5_000 });
+  });
 });
