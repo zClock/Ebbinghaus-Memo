@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, FormEvent } from "react";
+import { useState, useEffect, useRef, useMemo, FormEvent } from "react";
 import { 
   Volume2, 
   CheckCircle2, 
@@ -19,6 +19,7 @@ import {
 import { getTranslation } from "../lib/translations";
 import { usePronunciation } from "../lib/usePronunciation";
 import { markIncorrect, markCorrect } from "../lib/reviewQueue";
+import { isPhrase, normalizeForSpellingCompare, maskSpelling } from "../lib/wordText";
 
 interface Word {
   id: string;
@@ -300,9 +301,9 @@ export default function ReviewSession({
     if (e) e.preventDefault();
     if (!typedAnswer.trim() || isSpellingSubmitted) return;
 
-    const correctSpelling = currentWord.spelling.trim().toLowerCase();
-    const userSpelling = typedAnswer.trim().toLowerCase();
-    const isCorrect = userSpelling === correctSpelling;
+    // 宽松比对（v1.10）：忽略大小写/多余空格/首尾标点 —— normalizeForSpellingCompare 见 src/lib/wordText.ts
+    const isCorrect =
+      normalizeForSpellingCompare(typedAnswer) === normalizeForSpellingCompare(currentWord.spelling);
 
     setIsSpellingCorrect(isCorrect);
     setIsSpellingSubmitted(true);
@@ -404,9 +405,10 @@ export default function ReviewSession({
   };
 
   // Generates masked word placeholder for spelling mode helper, e.g. "c_______"
+  // 短语时保留词边界："r___ f__ i__________"（maskSpelling 保证长度不变，例句挖空替换依赖此约束）
   const getMaskedSpelling = (spelling: string) => {
     if (!spelling) return "";
-    return spelling[0] + "_".repeat(spelling.length - 1);
+    return maskSpelling(spelling);
   };
 
   // Stats calculation for the summary page
@@ -744,7 +746,9 @@ export default function ReviewSession({
                             autoCorrect="off"
                             autoCapitalize="none"
                             spellCheck="false"
-                            placeholder={t.spellingPlaceholder.replace("{char}", currentWord.spelling[0])}
+                            placeholder={isPhrase(currentWord.spelling)
+                              ? maskSpelling(currentWord.spelling)
+                              : t.spellingPlaceholder.replace("{char}", currentWord.spelling[0])}
                             value={typedAnswer}
                             onChange={(e) => setTypedAnswer(e.target.value)}
                             disabled={isSpellingSubmitted}
