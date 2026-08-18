@@ -24,6 +24,7 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { getTranslation } from "../lib/translations";
 import { usePronunciation } from "../lib/usePronunciation";
+import { parseWords } from "../lib/wordText";
 
 interface Word {
   id: string;
@@ -216,13 +217,7 @@ export default function WordList({
     }
   };
 
-  // Helper to parse text into clean word/phrase strings supporting Unicode
-  const parseWords = (text: string): string[] => {
-    return text
-      .split(/[\n,;，；\s]+/)
-      .map(w => w.replace(/[.,\/#!$%\^&\*;:{}=\\_`~()?"“”']/g, "").trim())
-      .filter(w => w.length > 0);
-  };
+  // 批量导入解析已抽为纯函数 src/lib/wordText.ts（v1.10：空格不再是分隔符，短语保持完整）
 
   const readAndSetFile = (file: File) => {
     if (file.type !== "text/plain" && !file.name.endsWith(".txt")) {
@@ -785,7 +780,7 @@ export default function WordList({
                     <input
                       id="input-add-spelling"
                       type="text"
-                      placeholder={useTargetUi ? "e.g., ephemeral" : "例如: ephemeral"}
+                      placeholder={useTargetUi ? "e.g., ephemeral / give up" : "例如: ephemeral / give up"}
                       value={newSpelling}
                       onChange={(e) => setNewSpelling(e.target.value)}
                       disabled={isAdding}
@@ -877,7 +872,7 @@ export default function WordList({
                     )}
                   </div>
                   <textarea
-                    placeholder={useTargetUi ? "e.g.,\nephemeral\nlucid, serendipity" : "例：\nephemeral\nlucid, serendipity"}
+                    placeholder={useTargetUi ? "e.g.,\nephemeral\ngive up, piece of cake" : "例：\nephemeral\ngive up, piece of cake"}
                     value={batchText}
                     onChange={(e) => setBatchText(e.target.value)}
                     disabled={isImporting}
