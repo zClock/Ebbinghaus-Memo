@@ -107,6 +107,54 @@ test.describe("词库管理", () => {
     await page.waitForTimeout(500);
   });
 
+  // ===== 短语支持（v1.10）=====
+  test("批量导入:短语与单词混合不被空格拆散", async ({ page, apiHelpers }) => {
+    test.setTimeout(120_000); // 导入涉及 AI 生成（CI 走 fallback），放宽单测超时
+    const email = apiHelpers.uniqueEmail("phrase_import");
+    const { token } = await apiHelpers.register(email, PASSWORD);
+
+    // UI 登录 + 进入词库
+    await page.goto("/");
+    await page.locator('input[type="email"]').first().waitFor({ state: "visible" });
+    await page.locator('input[type="email"]').first().fill(email);
+    await page.locator('input[type="password"]').first().fill(PASSWORD);
+    await page.getByRole("button", { name: /登录智能词库/ }).click();
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /词库|Library/i }).first().click();
+
+    // 切到「批量导入」tab
+    await page.getByRole("button", { name: /批量导入|Batch Import/ }).first().click();
+
+    // 输入短语 + 单词混合（一行短语、一行单词）
+    await page.locator("textarea").fill("give up\napple");
+
+    // 计数徽标应显示 2 个候选（证明空格不再把短语拆散）
+    await expect(page.getByText(/已检测到 2 个|2 candidate/i).first()).toBeVisible({ timeout: 5_000 });
+
+    // 提交导入
+    await page.getByRole("button", { name: /开始导入本批单词|Start batch import/ }).first().click();
+
+    // 等待导入完成：词库里同时出现短语与单词（CI 无 AI key 走 fallback，词仍会创建）
+    await expect
+      .poll(async () => {
+        const res = await fetch(`${BASE_URL}/api/words?language=All`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        return (json.words || json).map((w: any) => w.spelling);
+      }, { timeout: 60_000 })
+      .toEqual(expect.arrayContaining(["give up", "apple"]));
+
+    // 断言短语没有被拆成 "give" / "up" 两个独立词条
+    const res = await fetch(`${BASE_URL}/api/words?language=All`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    const spellings = (json.words || json).map((w: any) => w.spelling);
+    expect(spellings).not.toContain("give");
+    expect(spellings).not.toContain("up");
+  });
+
   // ===== 批量删除（v1.9.5）=====
   test("批量删除:全选当前页并删除多个单词", async ({ page, apiHelpers }) => {
     const email = apiHelpers.uniqueEmail("batch_del");

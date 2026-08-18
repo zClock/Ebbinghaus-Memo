@@ -505,7 +505,8 @@ async function getUserHistories(userId: string): Promise<any[]> {
 }
 
 async function findWordBySpelling(userId: string, spelling: string, language?: string): Promise<any | null> {
-  const cleanSpelling = spelling.trim().toLowerCase();
+  // 内部空格归一（与创建路径一致，保证短语查重口径统一）
+  const cleanSpelling = spelling.trim().toLowerCase().replace(/\s+/g, " ");
   if (isSupabaseConfigured && supabase) {
     try {
       let query = supabase
@@ -2496,7 +2497,8 @@ app.post("/api/words/create", authMiddleware, aiLimiter, async (req: any, res) =
     return res.status(400).json({ error: "Word spelling is required" });
   }
 
-  const cleanSpelling = spelling.trim().toLowerCase();
+  // 内部连续空格归一为一个（v1.10 短语支持：保证 "room  for" 与 "room for" 查重一致）
+  const cleanSpelling = spelling.trim().toLowerCase().replace(/\s+/g, " ");
   const userId = req.userId;
   const targetLanguage = language || "English";
 
@@ -2513,7 +2515,8 @@ app.post("/api/words/create", authMiddleware, aiLimiter, async (req: any, res) =
     let mnemonic = "";
     let audioUrl = "";
 
-    if (targetLanguage === "English") {
+    // 短语（含空格）该词典 API 必然 404，直接跳过省一次网络往返
+    if (targetLanguage === "English" && !/\s/.test(cleanSpelling)) {
       try {
         const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
         if (dictRes.ok) {
@@ -2619,9 +2622,10 @@ app.post("/api/words/import-batch", authMiddleware, aiLimiter, async (req: any, 
     );
 
     const maxBatchSize = 30;
+    // 内部连续空格归一为一个（v1.10 短语支持，保证批内/跨批查重口径一致）
     const targetSpellings = Array.from(new Set(
       spellings
-        .map(s => s.trim())
+        .map(s => s.trim().replace(/\s+/g, " "))
         .filter(s => s.length > 0)
     )).slice(0, maxBatchSize);
 
@@ -2659,8 +2663,8 @@ app.post("/api/words/import-batch", authMiddleware, aiLimiter, async (req: any, 
       let mnemonic = "";
       let audioUrl = "";
 
-      // 字典 API 查询(仅英文,与 AI 并行执行)
-      const dictPromise = (targetLanguage === "English")
+      // 字典 API 查询(仅英文且非短语——短语该 API 必然 404,跳过省一次网络往返)
+      const dictPromise = (targetLanguage === "English" && !/\s/.test(cleanSpelling))
         ? (async () => {
             try {
               const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanSpelling}`);
@@ -2903,7 +2907,15 @@ app.post("/api/generate-distractors", authMiddleware, async (req: any, res) => {
     }
 
     // 根据 word.language 路由到对应词典
+    // ⚠️ 先触发惰性加载再做可用性检查：v1.9.6 改惰性后 loadDictionary 只在
+    // findSimilarWords 内部调用，而下面预检查在它之前读 dictionaryLoaded 标志，
+    // 导致首次请求永远 500「本地词典未加载」（辨义模式全挂）
     const isJapanese = word.language === "Japanese";
+    if (isJapanese) {
+      loadJapaneseDictionary();
+    } else {
+      loadDictionary();
+    }
     const dictLoaded = isJapanese ? jpDictionaryLoaded : dictionaryLoaded;
     if (!dictLoaded) {
       return res.status(500).json({

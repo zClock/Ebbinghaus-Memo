@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, FormEvent } from "react";
+import { useState, useEffect, useRef, useMemo, FormEvent } from "react";
 import { 
   Volume2, 
   CheckCircle2, 
@@ -19,6 +19,7 @@ import {
 import { getTranslation } from "../lib/translations";
 import { usePronunciation } from "../lib/usePronunciation";
 import { markIncorrect, markCorrect } from "../lib/reviewQueue";
+import { isPhrase, normalizeForSpellingCompare, maskSpelling } from "../lib/wordText";
 
 interface Word {
   id: string;
@@ -59,11 +60,22 @@ export default function ReviewSession({
 
   // Queue states
   const [activeQueue, setActiveQueue] = useState<Word[]>([]);
+  // 会话词表快照：启动瞬间定格（v1.10）。结算/统计只认它 —— 复习中途切模式
+  // （failed 态"切换闪卡"按钮会改 reviewMode）不能改变结算范围，否则被跳过的
+  // 短语会以 firstTryCorrect=true 提交、凭空推进 SRS 阶段
+  const [sessionWords, setSessionWords] = useState<Word[]>([]);
   const [incorrectQueue, setIncorrectQueue] = useState<Word[]>([]);
   // ref 同步追踪 incorrectQueue 最新值，解决 setState 异步导致 handleAdvance 读取旧闭包的 bug
   const incorrectQueueRef = useRef<Word[]>([]);
   const [firstTryFailures, setFirstTryFailures] = useState<Set<string>>(new Set());
   const [alreadyReviewedIds, setAlreadyReviewedIds] = useState<Set<string>>(new Set());
+
+  // 会话预览词表（随模式实时变化）：只服务会话开始前的 UI（计数/守卫/空态/入队）。
+  // 辨义模式跳过短语 —— 本地词典查不到短语词条，题型会退化为送分题
+  const sessionPreviewWords = useMemo(
+    () => (reviewMode === "definition" ? dueWords.filter(w => !isPhrase(w.spelling)) : dueWords),
+    [dueWords, reviewMode]
+  );
 
   // Navigation index inside active round
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -174,8 +186,10 @@ export default function ReviewSession({
 
   // Initialize Session
   const handleStartSession = () => {
-    if (dueWords.length === 0) return;
-    setActiveQueue([...dueWords]);
+    if (sessionPreviewWords.length === 0) return;
+    // 快照会话词表：结算范围在启动瞬间定格，之后 reviewMode 怎么变都不影响
+    setActiveQueue([...sessionPreviewWords]);
+    setSessionWords([...sessionPreviewWords]);
     setIncorrectQueue([]);
     incorrectQueueRef.current = [];
     setFirstTryFailures(new Set());
@@ -198,12 +212,12 @@ export default function ReviewSession({
     prefetchedIdsRef.current = new Set();
     optionsBuiltForRef.current = null;
 
-    // 辨义模式启动时：预加载前 3 个单词的干扰词
+    // 辨义模式启动时：预加载前 3 个单词的干扰词（短语已被过滤，不会发起无效请求）
     if (reviewMode === "definition") {
       setIsInitialPreparing(true);
-      const firstThree = dueWords.slice(0, 3).map(w => w.id);
-      // 显式传入 dueWords，避免 setState 还没 re-render 时闭包里 dueWords 是旧值
-      preloadDistractors(firstThree, false, dueWords);
+      const firstThree = sessionPreviewWords.slice(0, 3).map(w => w.id);
+      // 显式传入词表，避免 setState 还没 re-render 时闭包里是旧值
+      preloadDistractors(firstThree, false, sessionPreviewWords);
     }
   };
 
@@ -300,9 +314,9 @@ export default function ReviewSession({
     if (e) e.preventDefault();
     if (!typedAnswer.trim() || isSpellingSubmitted) return;
 
-    const correctSpelling = currentWord.spelling.trim().toLowerCase();
-    const userSpelling = typedAnswer.trim().toLowerCase();
-    const isCorrect = userSpelling === correctSpelling;
+    // 宽松比对（v1.10）：忽略大小写/多余空格/首尾标点 —— normalizeForSpellingCompare 见 src/lib/wordText.ts
+    const isCorrect =
+      normalizeForSpellingCompare(typedAnswer) === normalizeForSpellingCompare(currentWord.spelling);
 
     setIsSpellingCorrect(isCorrect);
     setIsSpellingSubmitted(true);
@@ -391,8 +405,10 @@ export default function ReviewSession({
   };
 
   // Submit session results to backend
+  // ⚠️ 只提交快照内的词：辨义模式跳过的短语不在 sessionWords 里，
+  // 若误用全量 dueWords，短语会以 firstTryCorrect=true 结算、凭空推进 SRS
   const handleFinishAndSubmit = () => {
-    const submitPayload = dueWords.map(word => {
+    const submitPayload = sessionWords.map(word => {
       const isFailed = firstTryFailures.has(word.id);
       return {
         wordId: word.id,
@@ -404,13 +420,14 @@ export default function ReviewSession({
   };
 
   // Generates masked word placeholder for spelling mode helper, e.g. "c_______"
+  // 短语时保留词边界："r___ f__ i__________"（maskSpelling 保证长度不变，例句挖空替换依赖此约束）
   const getMaskedSpelling = (spelling: string) => {
     if (!spelling) return "";
-    return spelling[0] + "_".repeat(spelling.length - 1);
+    return maskSpelling(spelling);
   };
 
-  // Stats calculation for the summary page
-  const totalDueCount = dueWords.length;
+  // Stats calculation for the summary page（基于快照，与提交口径一致）
+  const totalDueCount = sessionWords.length;
   const firstTryCorrectCount = totalDueCount - firstTryFailures.size;
   const firstTryCorrectPercentage = Math.round((firstTryCorrectCount / totalDueCount) * 100);
 
@@ -432,8 +449,14 @@ export default function ReviewSession({
               {t.studyModeSelection}
             </h2>
             <p className="text-sm text-slate-500 font-light">
-              {t.readyForReinforcement.replace("{count}", String(dueWords.length))}
+              {t.readyForReinforcement.replace("{count}", String(sessionPreviewWords.length))}
             </p>
+            {/* 辨义模式跳过短语时给出提示，避免用户以为数据丢失 */}
+            {reviewMode === "definition" && sessionPreviewWords.length < dueWords.length && (
+              <p className="text-xs text-amber-500 font-light">
+                {t.definitionPhraseSkipped.replace("{count}", String(dueWords.length - sessionPreviewWords.length))}
+              </p>
+            )}
           </div>
 
           {/* Mode Selector */}
@@ -511,20 +534,29 @@ export default function ReviewSession({
             )}
           </div>
 
-          <div className="flex gap-3 justify-center pt-2">
-            <button
-              id="btn-start-review-session"
-              onClick={handleStartSession}
-              className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md shadow-indigo-100 cursor-pointer w-full"
-            >
-              {t.launchSession}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold rounded-xl transition-all cursor-pointer"
-            >
-              {t.back}
-            </button>
+          <div className="flex flex-col gap-3 justify-center pt-2">
+            {/* 辨义模式下全部是短语：无法开始，引导换模式 */}
+            {reviewMode === "definition" && sessionPreviewWords.length === 0 && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-4 py-2">
+                {t.definitionAllPhrases}
+              </p>
+            )}
+            <div className="flex gap-3 justify-center">
+              <button
+                id="btn-start-review-session"
+                onClick={handleStartSession}
+                disabled={sessionPreviewWords.length === 0}
+                className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md shadow-indigo-100 cursor-pointer w-full disabled:bg-slate-300 disabled:cursor-not-allowed disabled:shadow-none"
+              >
+                {t.launchSession}
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm font-semibold rounded-xl transition-all cursor-pointer"
+              >
+                {t.back}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -744,7 +776,9 @@ export default function ReviewSession({
                             autoCorrect="off"
                             autoCapitalize="none"
                             spellCheck="false"
-                            placeholder={t.spellingPlaceholder.replace("{char}", currentWord.spelling[0])}
+                            placeholder={isPhrase(currentWord.spelling)
+                              ? maskSpelling(currentWord.spelling)
+                              : t.spellingPlaceholder.replace("{char}", currentWord.spelling[0])}
                             value={typedAnswer}
                             onChange={(e) => setTypedAnswer(e.target.value)}
                             disabled={isSpellingSubmitted}
@@ -1096,7 +1130,7 @@ export default function ReviewSession({
               </span>
               <div className="flex flex-wrap gap-2">
                 {Array.from(firstTryFailures).map(id => {
-                  const item = dueWords.find(w => w.id === id);
+                  const item = sessionWords.find(w => w.id === id);
                   if (!item) return null;
                   return (
                     <span key={id} className="text-xs font-mono font-bold bg-white text-rose-700 px-2.5 py-1 rounded-lg border border-rose-100 shadow-sm">
